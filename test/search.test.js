@@ -80,10 +80,12 @@ test('pipeline: rate limit stops remaining queries with partial results', async 
   assert.ok(s.resources['gh:chaozh/mit-6.824']);
 });
 
-test('pipeline: total failure returns an empty search, not an exception', async () => {
-  const s = await createSearcher({ config, github: fakeGitHub({ failOn: 'all' }), now: NOW }).search('distributed systems');
+test('pipeline: two failures in a row stop the search with an empty result, not an exception', async () => {
+  const gh = fakeGitHub({ failOn: 'all' });
+  const s = await createSearcher({ config, github: gh, now: NOW }).search('distributed systems');
   assert.equal(Object.keys(s.resources).length, 0);
-  assert.equal(s.warnings.length, 6);
+  assert.equal(gh.calls.length, 2);
+  assert.match(s.warnings.at(-1), /unreachable/);
 });
 
 test('group: drops forks of present originals and routes awesome lists', () => {
@@ -97,6 +99,12 @@ test('group: drops forks of present originals and routes awesome lists', () => {
   assert.equal(g.cards.length, 1);
   assert.deepEqual(g.cards[0].resourceIds, ['a']);
   assert.equal(g.droppedForks, 1);
+  const unknown = group([r('e', { university: 'harvard', courseCode: 'CS249R', description: 'Machine Learning Systems. A book.', repo: { name: 'cs249r_book' } })]);
+  assert.equal(unknown.cards[0].title, 'Machine Learning Systems');
+  const long = group([r('g', { university: 'harvard', courseCode: 'CS249R', description: `Machine Learning Systems: ${'very long subtitle '.repeat(6)}• Harvard CS249r | https://mlsysbook.ai`, repo: { name: 'cs249r_book' } })]);
+  assert.equal(long.cards[0].title, 'Machine Learning Systems');
+  const noDesc = group([r('f', { university: 'harvard', courseCode: 'CS249R', description: '', repo: { name: 'cs249r_book' } })]);
+  assert.equal(noDesc.cards[0].title, 'cs249r_book');
   assert.deepEqual(g.awesome, ['c']);
   assert.deepEqual(g.other, ['d']);
 });
