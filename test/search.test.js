@@ -22,7 +22,9 @@ const FIXTURE = {
   lecture: [repo('alinush/6.824-lecture-notes', '6.824 Distributed Systems: Lecture notes', 228)],
   general: [repo('cirosantilli/china-dictatorship', 'distributed systems spam', 3310),
     repo('pingcap/talent-plan', 'open source training courses about distributed database and distributed systems', 11035),
-    repo('x/react-kit', 'UI kit', 50000)],
+    repo('x/react-kit', 'UI kit', 50000),
+    repo('mirror/dictatroship-7', `distributed systems ${'propaganda '.repeat(200)}`, 383),
+    repo('redis/redis', 'The preferred, fastest in-memory data store', 70000, { topics: ['distributed-systems', 'database'] })],
   awesome: [repo('theanalyst/awesome-distributed-systems', 'A curated list to learn about distributed systems', 9000)],
   topic: [repo('chaozh/MIT-6.824', 'Basic Sources for MIT 6.824 Distributed Systems Class', 3260)],
   code: [repo('huihongxiao/MIT6.824', '', 445), repo('someone/15-440-p1', 'project 1', 12)],
@@ -50,6 +52,9 @@ test('pipeline: merges, filters spam and irrelevant repos, builds MIT card first
   assert.equal(s.warnings.length, 0);
   assert.ok(!s.resources['gh:cirosantilli/china-dictatorship'], 'blocked repo removed');
   assert.ok(!s.resources['gh:x/react-kit'], 'irrelevant repo removed');
+  assert.ok(!s.resources['gh:mirror/dictatroship-7'], 'keyword-stuffed description removed');
+  assert.ok(!s.resources['gh:redis/redis'], 'software project without learning signals removed');
+  assert.deepEqual([s.stats.spam, s.stats.irrelevant, s.stats.notLearning], [2, 1, 1]);
   assert.deepEqual(s.resources['gh:chaozh/mit-6.824'].foundBy.sort(), ['course', 'topic']);
   assert.ok(s.resources['gh:huihongxiao/mit6.824'], 'code-query result with empty description is kept');
   assert.equal(s.cards[0].key, 'mit:6.5840');

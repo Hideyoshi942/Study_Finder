@@ -9,6 +9,7 @@
     "maxQueries": 6,
     "maxCodesPerQuery": 5,
     "minRelevance": 0.34,
+    "maxDescriptionLength": 1000,
     "resultLimit": 150
   },
   "weights": { "stars": 0.30, "relevance": 0.20, "university": 0.20, "content": 0.15, "freshness": 0.15 },
