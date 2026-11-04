@@ -109,6 +109,8 @@ async function runSearch(q, { refresh = false, push = true } = {}) {
     }
     if (token !== runToken) return;
     current = result;
+    await loadNewForCurrent();
+    if (token !== runToken) return;
     hideProgress();
     if (!shownPartial) resetFilters(false);
     buildFilters();
@@ -215,6 +217,7 @@ function filterState() {
     years: Number($('f-updated').value),
     official: $('f-official').checked,
     hideSolutions: $('f-solutions').checked,
+    hideBroken: $('f-broken').checked,
   };
 }
 
@@ -232,6 +235,7 @@ function passes(r, f) {
   if (r.repo && f.years && (!r.repo.pushedAt || Date.now() - Date.parse(r.repo.pushedAt) > f.years * YEAR)) return false;
   if (f.official && !r.official) return false;
   if (f.hideSolutions && solutionsOnly(r.types)) return false;
+  if (f.hideBroken && r.linkStatus?.status === 'broken') return false;
   return true;
 }
 
@@ -264,7 +268,7 @@ function buildFilters() {
 
 function resetFilters(rerender = true) {
   ui.universities.clear(); ui.types.clear(); ui.levels.clear(); ui.langs.clear();
-  $('f-stars').value = 0; $('f-updated').value = '0'; $('f-official').checked = false; $('f-solutions').checked = true;
+  $('f-stars').value = 0; $('f-updated').value = '0'; $('f-official').checked = false; $('f-solutions').checked = true; $('f-broken').checked = true;
   if (rerender && current) { buildFilters(); render(); }
 }
 
@@ -335,8 +339,10 @@ function item(r, { showUni = false, created = false } = {}) {
         : h('span', { class: 'meta' }, `★ ${fmtStars(r.repo?.stars ?? 0)}`,
           created && r.repo?.createdAt ? ` · created ${ago(r.repo.createdAt)}` : r.repo?.pushedAt ? ` · ${month(r.repo.pushedAt)}` : ''),
       created && r.courseCode && r.universityName ? h('span', { class: 'badge code' }, `${r.universityName} ${r.courseCode}`) : null,
+      newIds.has(r.id) ? h('span', { class: 'badge new' }, 'new') : null,
+      r.linkStatus?.status === 'broken' ? h('span', { class: 'badge broken', title: `Link check: ${r.linkStatus.code}` }, 'broken link') : null,
       h('span', { class: 'chips' }, r.types.map((t) => h('span', { class: 'badge' }, TYPE_LABELS[t] ?? t))),
-      whyBtn),
+      h('span', { class: 'item-actions' }, saveButton(r), whyBtn)),
     r.description ? h('p', { class: 'desc' }, r.description) : '');
   return li;
 }
@@ -456,6 +462,7 @@ function render() {
   if (awesome.length) sections.push(h('h2', { class: 'section' }, 'Awesome lists & roadmaps ', h('span', { class: 'count' }, `(${awesome.length})`)), h('ul', { class: 'list flat' }, awesome.map((r) => item(r, { showUni: true }))));
   if (other.length) sections.push(h('h2', { class: 'section' }, 'Other materials ', h('span', { class: 'count' }, `(${other.length})`)), h('ul', { class: 'list flat' }, other.map((r) => item(r, { showUni: true }))));
   uniPills();
+  updateToolbarExtras();
   if (sections.length && !current.partial) sections.push(relatedSection());
   if (!sections.length && current.partial) {
     sections.push(...Array.from({ length: 3 }, () => h('div', { class: 'skeleton' })));
@@ -465,6 +472,218 @@ function render() {
       : [h('h1', {}, 'Nothing found'), h('p', {}, 'Try a broader topic, an English term, or a course code.'), didYouMeanRow(current.keyword)]));
   }
   $('content').replaceChildren(...sections.flat().filter(Boolean));
+}
+
+// ---------- writes ----------
+async function apiSend(method, path, body = {}) {
+  const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function flash(message, kind = 'info') {
+  const el = h('div', { class: `toast ${kind}`, role: 'status' }, message);
+  document.body.append(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ---------- collections ----------
+let lists = [];
+let watches = [];
+let newIds = new Set(); // results marked new by a watch, for the current search
+
+async function loadLists() { try { lists = await api('/api/collections'); } catch { /* optional */ } }
+async function loadWatches() { try { watches = await api('/api/watches'); } catch { /* optional */ } }
+const savedIn = (rid) => lists.filter((c) => c.items.some((i) => i.resourceId === rid));
+
+const snapshotOf = (r) => ({
+  title: r.title, url: r.url, kind: r.kind, host: r.host, university: r.university, universityName: r.universityName,
+  courseCode: r.courseCode, courseTitle: r.courseTitle, stars: r.repo?.stars ?? null, types: r.types,
+  description: (r.description ?? '').slice(0, 300),
+});
+
+let openMenu = null;
+function closeSaveMenu() { openMenu?.remove(); openMenu = null; }
+
+// A small popover listing the user's lists; ticking one adds or removes the resource.
+function openSaveMenu(btn, r) {
+  closeSaveMenu();
+  const afterChange = async () => { await loadLists(); closeSaveMenu(); rerender(); };
+  const toggle = async (c) => {
+    try {
+      if (c.items.some((i) => i.resourceId === r.id)) {
+        await apiSend('POST', `/api/collections/${c.id}/items/delete`, { resourceId: r.id });
+        flash(`Removed from ${c.name}`);
+      } else {
+        await apiSend('PUT', `/api/collections/${c.id}/items`, { resourceId: r.id, snapshot: snapshotOf(r) });
+        flash(`Saved to ${c.name}`);
+      }
+      await afterChange();
+    } catch (e) { flash(e.message, 'error'); }
+  };
+  const input = h('input', { type: 'text', maxlength: '60', placeholder: 'New list name', 'aria-label': 'New list name', value: lists.length ? '' : 'My study list' });
+  const form = h('form', { class: 'save-new', onsubmit: async (e) => {
+    e.preventDefault();
+    try {
+      const c = await apiSend('POST', '/api/collections', { name: input.value });
+      await apiSend('PUT', `/api/collections/${c.id}/items`, { resourceId: r.id, snapshot: snapshotOf(r) });
+      flash(`Saved to ${c.name}`);
+      await afterChange();
+    } catch (err) { flash(err.message, 'error'); }
+  } }, input, h('button', { type: 'submit' }, 'Add'));
+  const menu = h('div', { class: 'save-menu', role: 'dialog', 'aria-label': 'Save to a list' },
+    h('div', { class: 'save-title' }, 'Save to…'),
+    lists.map((c) => h('button', { type: 'button', class: 'save-option', 'aria-pressed': String(c.items.some((i) => i.resourceId === r.id)), onclick: () => toggle(c) },
+      h('span', { class: 'tick' }, c.items.some((i) => i.resourceId === r.id) ? '✓' : ''), c.name, h('span', { class: 'count' }, String(c.items.length)))),
+    form);
+  document.body.append(menu);
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = `${window.scrollY + rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, Math.min(window.scrollX + rect.right - 260, window.scrollX + document.documentElement.clientWidth - 268))}px`;
+  openMenu = menu;
+  (lists.length ? menu.querySelector('.save-option') : input).focus();
+}
+document.addEventListener('mousedown', (e) => { if (openMenu && !openMenu.contains(e.target) && !e.target.closest('.save-btn')) closeSaveMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSaveMenu(); });
+
+function saveButton(r) {
+  const n = savedIn(r.id).length;
+  return h('button', { type: 'button', class: 'save-btn', 'aria-pressed': String(n > 0), 'aria-haspopup': 'dialog',
+    onclick: (e) => (openMenu ? closeSaveMenu() : openSaveMenu(e.currentTarget, r)) }, n ? '★ Saved' : '☆ Save');
+}
+
+// Re-draws whichever view is showing after lists or watches change.
+function rerender() {
+  if (view() === 'lists') renderLists();
+  else if (current) render();
+}
+const view = () => new URLSearchParams(location.search).get('view');
+
+const STATUS_LABELS = { todo: 'To do', learning: 'Learning', done: 'Done' };
+
+async function renderLists({ push = false } = {}) {
+  if (push) history.pushState({ view: 'lists' }, '', '?view=lists');
+  activeStream?.close();
+  runToken++;
+  hideProgress();
+  current = null;
+  document.title = 'My lists · Study Finder';
+  $('toolbar').hidden = true;
+  $('filters').hidden = true;
+  $('uni-pills').hidden = true;
+  $('queries').textContent = '';
+  $('banner').replaceChildren();
+  await loadLists();
+  if (view() !== 'lists') return;
+
+  const nameInput = h('input', { type: 'text', maxlength: '60', placeholder: 'e.g. Systems track', 'aria-label': 'New list name' });
+  const createForm = h('form', { class: 'save-new wide', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await apiSend('POST', '/api/collections', { name: nameInput.value }); renderLists(); } catch (err) { flash(err.message, 'error'); }
+  } }, nameInput, h('button', { type: 'submit' }, 'New list'));
+
+  const listCard = (c) => {
+    const done = c.items.filter((i) => i.status === 'done').length;
+    const learning = c.items.filter((i) => i.status === 'learning').length;
+    const rows = c.items.map((it) => {
+      const s = it.snapshot;
+      const status = h('select', { 'aria-label': `Status of ${s.title}`, onchange: async (e) => {
+        try { await apiSend('PUT', `/api/collections/${c.id}/items`, { resourceId: it.resourceId, status: e.target.value }); renderLists(); } catch (err) { flash(err.message, 'error'); }
+      } }, Object.entries(STATUS_LABELS).map(([v, label]) => h('option', { value: v, selected: it.status === v }, label)));
+      const note = h('textarea', { rows: '1', maxlength: '1000', placeholder: 'Note…', 'aria-label': `Note for ${s.title}`, onchange: async (e) => {
+        try { await apiSend('PUT', `/api/collections/${c.id}/items`, { resourceId: it.resourceId, note: e.target.value }); flash('Note saved'); } catch (err) { flash(err.message, 'error'); }
+      } });
+      note.value = it.note ?? '';
+      return h('li', { class: `list-row status-${it.status}` },
+        h('div', { class: 'item-line' },
+          h('a', { class: 'item-title', href: s.url, target: '_blank', rel: 'noopener noreferrer' }, s.title),
+          s.universityName ? h('span', { class: 'uni-badge', 'data-uni': s.university }, s.universityName) : null,
+          s.courseCode ? h('span', { class: 'badge' }, s.courseCode) : null,
+          h('span', { class: 'meta' }, s.kind === 'external' ? s.host : s.stars != null ? `★ ${fmtStars(s.stars)}` : '')),
+        h('div', { class: 'row-controls' }, status, note,
+          h('button', { type: 'button', class: 'link', onclick: async () => {
+            try { await apiSend('POST', `/api/collections/${c.id}/items/delete`, { resourceId: it.resourceId }); renderLists(); } catch (err) { flash(err.message, 'error'); }
+          } }, 'Remove')));
+    });
+    return h('article', { class: 'card list-card' },
+      h('div', { class: 'card-head' },
+        h('span', { class: 'card-title' }, c.name),
+        h('span', { class: 'muted small' }, `${done}/${c.items.length} done${learning ? ` · ${learning} learning` : ''}`),
+        h('span', { class: 'spacer' }),
+        h('button', { type: 'button', class: 'link', onclick: async () => {
+          const name = prompt('Rename list', c.name);
+          if (name == null) return;
+          try { await apiSend('PATCH', `/api/collections/${c.id}`, { name }); renderLists(); } catch (err) { flash(err.message, 'error'); }
+        } }, 'Rename'),
+        h('button', { type: 'button', class: 'link danger', onclick: async () => {
+          if (!confirm(`Delete the list "${c.name}" and its ${c.items.length} items?`)) return;
+          try { await apiSend('DELETE', `/api/collections/${c.id}`); renderLists(); } catch (err) { flash(err.message, 'error'); }
+        } }, 'Delete')),
+      h('div', { class: 'list-progress' }, h('div', { class: 'list-progress-bar' })),
+      c.items.length ? h('ul', { class: 'list' }, rows) : h('p', { class: 'muted' }, 'Empty. Use ☆ Save on any search result to add it here.'));
+  };
+
+  const cards = lists.map(listCard);
+  // Progress bar width is set after creation (inline style attributes are blocked by the CSP).
+  lists.forEach((c, i) => {
+    const pct = c.items.length ? (100 * c.items.filter((x) => x.status === 'done').length) / c.items.length : 0;
+    cards[i].querySelector('.list-progress-bar').style.width = `${pct}%`;
+  });
+  $('content').replaceChildren(
+    h('section', { class: 'lists-head' }, h('h1', {}, 'My lists'),
+      h('p', { class: 'muted' }, 'Save courses and repos from any search, then track what you are learning.'), createForm),
+    ...(cards.length ? cards : [h('div', { class: 'empty' }, h('p', {}, 'No lists yet. Create one above, or press ☆ Save on a search result.'))]));
+}
+
+// ---------- watches + link check (results toolbar) ----------
+function updateToolbarExtras() {
+  if (!current || current.partial) { $('check-links').hidden = true; return; }
+  const w = watches.find((x) => x.id === current.id);
+  const btn = $('watch');
+  btn.setAttribute('aria-pressed', String(Boolean(w)));
+  btn.textContent = w ? '● Watching' : 'Watch';
+  btn.title = w ? `Checked every ${w.intervalHours} h${w.lastRunAt ? ` · last ${ago(w.lastRunAt)}` : ''}. Click to stop.` : 'Re-check this search every day and mark new results';
+  const externals = Object.values(current.resources).filter((r) => r.kind === 'external');
+  $('check-links').hidden = !externals.length;
+}
+
+$('watch').addEventListener('click', async () => {
+  if (!current) return;
+  const w = watches.find((x) => x.id === current.id);
+  try {
+    if (w) { await apiSend('DELETE', `/api/watches/${w.id}`); flash('Stopped watching'); }
+    else { await apiSend('POST', '/api/watches', { keyword: current.keyword, intervalHours: 24 }); flash('Watching: new results will be marked'); }
+    await loadWatches();
+    updateToolbarExtras();
+  } catch (e) { flash(e.message, 'error'); }
+});
+
+$('check-links').addEventListener('click', async (e) => {
+  if (!current) return;
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  try {
+    const r = await apiSend('POST', `/api/check-links/${current.id}`);
+    current = r.search;
+    render();
+    flash(`Checked ${r.checked} links: ${r.broken} broken${r.broken && $('f-broken').checked ? ' (hidden)' : ''}`);
+  } catch (err) { flash(err.message, 'error'); }
+  btn.disabled = false;
+  btn.textContent = 'Check links';
+});
+
+// After a search loads: mark results a watch found since last time, then clear the watch's count.
+async function loadNewForCurrent() {
+  newIds = new Set();
+  const w = current && watches.find((x) => x.id === current.id);
+  if (!w?.newCount) return;
+  try {
+    newIds = new Set(await api(`/api/watches/${w.id}/new`));
+    await apiSend('POST', `/api/watches/${w.id}/seen`);
+    await loadWatches();
+  } catch { /* optional */ }
 }
 
 // ---------- home ----------
@@ -559,7 +778,13 @@ async function renderHome() {
     h('p', { class: 'muted' }, 'A classic order for learning computer science from scratch.'),
     h('div', { class: 'tile-grid path' }, rec.starter.map((c, i) => courseTile(c, { step: i + 1 }))));
 
-  const order = recommended ? [hero, recommended, feedSection, topics, starter] : [hero, topics, feedSection, starter];
+  const watched = home.watches?.length
+    ? section('Watched topics',
+      h('div', { class: 'chips-row left' }, home.watches.map((w) =>
+        h('button', { type: 'button', class: 'chip watch-chip', title: w.lastRunAt ? `Checked ${ago(w.lastRunAt)}` : 'Not checked yet', onclick: () => runSearch(w.keyword) },
+          w.keyword, w.newCount ? h('span', { class: 'new-count' }, `${w.newCount} new`) : null))))
+    : null;
+  const order = recommended ? [hero, watched, recommended, feedSection, topics, starter] : [hero, watched, topics, feedSection, starter];
   $('content').replaceChildren(...order.filter(Boolean));
 }
 
@@ -605,20 +830,24 @@ $('search-form').addEventListener('submit', (e) => { e.preventDefault(); runSear
 $('refresh').addEventListener('click', () => current && runSearch(current.keyword, { refresh: true, push: false }));
 $('reset-filters').addEventListener('click', () => resetFilters());
 $('sort').addEventListener('change', render);
-for (const id of ['f-stars', 'f-updated', 'f-official', 'f-solutions']) $(id).addEventListener('input', render);
+for (const id of ['f-stars', 'f-updated', 'f-official', 'f-solutions', 'f-broken']) $(id).addEventListener('input', render);
 $('toggle-filters').addEventListener('click', () => $('filters').classList.toggle('open'));
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) { e.preventDefault(); $('q').focus(); }
 });
-window.addEventListener('popstate', () => {
+$('lists-btn').addEventListener('click', () => renderLists({ push: true }));
+
+function route() {
   const q = new URLSearchParams(location.search).get('q');
   if (q) runSearch(q, { push: false });
+  else if (view() === 'lists') renderLists();
   else renderHome();
-});
+}
+window.addEventListener('popstate', route);
 
-const initial = new URLSearchParams(location.search).get('q');
-if (initial) runSearch(initial, { push: false });
-else renderHome();
+// Lists and watches are needed before the first render (Save and Watch buttons show their state).
+await Promise.all([loadLists(), loadWatches()]);
+route();
 loadHistory();
 loadRate();
 loadSuggestions();

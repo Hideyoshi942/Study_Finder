@@ -17,6 +17,7 @@
       <ul id="suggestions" class="suggestions" role="listbox" aria-label="Suggestions" hidden></ul>
     </form>
     <span id="rate" class="rate" title="GitHub search budget"></span>
+    <button id="lists-btn" type="button" class="nav-btn">My lists</button>
     <button id="theme" type="button" class="theme-toggle" aria-label="Theme: auto" title="Theme: auto">◐</button>
   </header>
 
@@ -44,6 +45,7 @@
         </label>
         <label class="check"><input id="f-official" type="checkbox"> Official only</label>
         <label class="check"><input id="f-solutions" type="checkbox" checked> Hide solution repos</label>
+        <label class="check"><input id="f-broken" type="checkbox" checked> Hide broken links</label>
       </fieldset>
     </aside>
 
@@ -58,6 +60,8 @@
             <option value="updated">Recently updated</option>
           </select>
         </label>
+        <button id="watch" type="button" aria-pressed="false" title="Re-check this search every day and mark new results">Watch</button>
+        <button id="check-links" type="button" hidden title="Check that course sites and videos still open">Check links</button>
         <button id="refresh" type="button">Refresh</button>
         <details id="export-menu" class="menu">
           <summary class="button">Export</summary>
