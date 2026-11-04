@@ -56,6 +56,7 @@ async function runSearch(q, { refresh = false, push = true } = {}) {
     current = null;
     $('toolbar').hidden = true;
     $('filters').hidden = true;
+    $('uni-pills').hidden = true;
     $('queries').textContent = '';
     $('content').replaceChildren();
     $('banner').replaceChildren(h('div', { class: 'banner error' }, e.message));
@@ -206,27 +207,62 @@ function sortKey(r) {
   return r.score;
 }
 
-function whyText(r) {
+const FACTORS = [
+  ['stars', 'Stars'], ['relevance', 'Relevance'], ['university', 'University'], ['content', 'Content'], ['freshness', 'Freshness'],
+];
+const MATCHED_BY = { org: 'official GitHub org', course: 'known course code', name: 'university name in the description', 'code-pattern': 'course code pattern' };
+
+// "why?" panel: one bar per scoring factor, plus how the university was found.
+function whyPanel(r) {
   const b = r.scoreBreakdown ?? {};
-  const pct = (v) => `${Math.round((v ?? 0) * 100)}%`;
-  const lines = [`Score ${r.score}`, `stars ${pct(b.stars)} · relevance ${pct(b.relevance)} · university ${pct(b.university)}`,
-    `content ${pct(b.content)} · freshness ${pct(b.freshness)}${b.penalties ? ` · penalty −${b.penalties}` : ''}`];
-  if (r.universityMatchedBy) lines.push(`University matched by ${r.universityMatchedBy}`);
-  lines.push(`Found by: ${r.foundBy.join(', ')}`);
-  return lines.join('\n');
+  const rows = FACTORS.map(([k, label]) => {
+    const v = Math.round((b[k] ?? 0) * 100);
+    return h('div', { class: 'why-row' },
+      h('span', {}, label),
+      h('meter', { min: '0', max: '100', value: String(v), 'aria-label': `${label} ${v}%` }),
+      h('span', { class: 'why-val' }, `${v}%`));
+  });
+  const notes = [];
+  if (b.penalties) notes.push(`Penalty −${b.penalties} (fork, solutions only, or no description)`);
+  if (r.universityMatchedBy) notes.push(`${r.universityName}: matched by ${MATCHED_BY[r.universityMatchedBy] ?? r.universityMatchedBy}`);
+  if (r.foundBy?.length) notes.push(`Found by the ${r.foundBy.join(', ')} quer${r.foundBy.length > 1 ? 'ies' : 'y'}`);
+  return h('div', { class: 'why' },
+    h('div', { class: 'why-score' }, `Score ${r.score}`),
+    rows,
+    notes.map((n) => h('p', { class: 'why-note' }, n)));
 }
 
 function item(r, { showUni = false, created = false } = {}) {
-  return h('li', { class: 'item' },
+  const li = h('li', { class: 'item' });
+  let panel = null;
+  const whyBtn = r.scoreBreakdown ? h('button', {
+    type: 'button', class: 'why-btn', 'aria-expanded': 'false',
+    onclick: (e) => {
+      const open = e.currentTarget.getAttribute('aria-expanded') === 'true';
+      e.currentTarget.setAttribute('aria-expanded', String(!open));
+      if (open) { panel?.remove(); panel = null; } else { panel = whyPanel(r); li.append(panel); }
+    },
+  }, 'why?') : null;
+  li.append(
     h('div', { class: 'item-line' },
       h('a', { class: 'item-title', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.title),
-      showUni && r.universityName ? h('span', { class: 'badge' }, r.universityName) : null,
+      showUni && r.universityName ? h('span', { class: 'uni-badge', 'data-uni': r.university }, r.universityName) : null,
       r.official ? h('span', { class: 'badge official' }, 'official') : null,
-      h('span', { class: 'meta', title: whyText(r) }, `★ ${fmtStars(r.repo?.stars ?? 0)}`,
+      h('span', { class: 'meta' }, `★ ${fmtStars(r.repo?.stars ?? 0)}`,
         created && r.repo?.createdAt ? ` · created ${ago(r.repo.createdAt)}` : r.repo?.pushedAt ? ` · ${month(r.repo.pushedAt)}` : ''),
       created && r.courseCode && r.universityName ? h('span', { class: 'badge code' }, `${r.universityName} ${r.courseCode}`) : null,
-      h('span', { class: 'chips' }, r.types.map((t) => h('span', { class: 'badge' }, TYPE_LABELS[t] ?? t)))),
-    r.description ? h('p', { class: 'desc' }, r.description) : null);
+      h('span', { class: 'chips' }, r.types.map((t) => h('span', { class: 'badge' }, TYPE_LABELS[t] ?? t))),
+      whyBtn),
+    r.description ? h('p', { class: 'desc' }, r.description) : '');
+  return li;
+}
+
+// "12 repos · ★ 3.3k top · videos · labs · notes"
+function cardSummary(members) {
+  const has = (t) => members.some((m) => m.types.includes(t));
+  const parts = [`${members.length} repo${members.length > 1 ? 's' : ''}`, `★ ${fmtStars(Math.max(...members.map((m) => m.repo?.stars ?? 0)))} top`];
+  for (const [t, label] of [['videos', 'videos'], ['lecture-notes', 'notes'], ['assignments', 'labs'], ['book', 'book']]) if (has(t)) parts.push(label);
+  return parts.join(' · ');
 }
 
 function card(c, members) {
@@ -236,12 +272,47 @@ function card(c, members) {
   const more = rest > 0
     ? h('button', { type: 'button', class: 'link more', onclick: (e) => { list.replaceChildren(...members.map((m) => item(m))); e.target.remove(); } }, `Show ${rest} more`)
     : null;
-  return h('article', { class: 'card' },
+  return h('article', { class: 'card', 'data-uni': c.university },
     h('div', { class: 'card-head' },
-      h('span', { class: 'card-title' }, h('span', { class: 'card-uni' }, `${c.universityName} ${c.courseCode}`), ` · ${c.title}`),
+      h('span', { class: 'uni-badge', 'data-uni': c.university }, c.universityName),
+      h('span', { class: 'card-code' }, c.courseCode),
+      h('span', { class: 'card-title' }, c.title),
       members.some((m) => m.official) ? h('span', { class: 'badge official' }, 'official') : null,
       levels.map((l) => h('span', { class: 'badge' }, l))),
+    h('p', { class: 'card-summary' }, cardSummary(members)),
     list, more);
+}
+
+function uniPills() {
+  const all = Object.values(current.resources);
+  const counts = new Map();
+  for (const r of all) if (r.university) counts.set(r.university, { name: r.universityName, n: (counts.get(r.university)?.n ?? 0) + 1 });
+  const pills = [...counts].sort((a, b) => b[1].n - a[1].n).slice(0, 10);
+  const el = $('uni-pills');
+  el.hidden = pills.length < 2;
+  const toggle = (id) => {
+    if (id === null) ui.universities.clear();
+    else if (ui.universities.has(id)) ui.universities.delete(id);
+    else ui.universities.add(id);
+    buildFilters();
+    render();
+  };
+  el.replaceChildren(
+    h('button', { type: 'button', class: 'pill', 'aria-pressed': String(!ui.universities.size), onclick: () => toggle(null) }, 'All'),
+    ...pills.map(([id, { name, n }]) => h('button', {
+      type: 'button', class: 'pill', 'data-uni': id, 'aria-pressed': String(ui.universities.has(id)), onclick: () => toggle(id),
+    }, name, h('span', { class: 'pill-count' }, String(n)))));
+}
+
+function relatedSection() {
+  const rel = current.related;
+  if (!rel?.topic || (!rel.topics.length && !rel.courses.length)) return null;
+  return h('section', { class: 'related' },
+    rel.topics.length ? [h('h2', { class: 'section' }, 'Related topics'),
+      h('div', { class: 'chips-row left' }, rel.topics.map((t) =>
+        h('button', { type: 'button', class: 'chip', onclick: () => runSearch(t.query) }, t.label, h('span', { class: 'chip-vi' }, t.vi))))] : null,
+    rel.courses.length ? [h('h2', { class: 'section' }, 'Similar courses'),
+      h('div', { class: 'tile-grid' }, rel.courses.map((c) => courseTile(c)))] : null);
 }
 
 function render() {
@@ -270,12 +341,14 @@ function render() {
   if (cards.length) sections.push(h('h2', { class: 'section' }, 'University courses ', h('span', { class: 'count' }, `(${cards.length})`)), cards.map((x) => card(x.c, x.members)));
   if (awesome.length) sections.push(h('h2', { class: 'section' }, 'Awesome lists & roadmaps ', h('span', { class: 'count' }, `(${awesome.length})`)), h('ul', { class: 'list flat' }, awesome.map((r) => item(r, { showUni: true }))));
   if (other.length) sections.push(h('h2', { class: 'section' }, 'Other materials ', h('span', { class: 'count' }, `(${other.length})`)), h('ul', { class: 'list flat' }, other.map((r) => item(r, { showUni: true }))));
+  uniPills();
+  if (sections.length) sections.push(relatedSection());
   if (!sections.length) {
     sections.push(h('div', { class: 'empty' }, total
       ? [h('h1', {}, 'No results match these filters'), h('button', { type: 'button', onclick: () => resetFilters() }, 'Reset filters')]
       : [h('h1', {}, 'Nothing found'), h('p', {}, 'Try a broader topic, an English term, or a course code.'), didYouMeanRow(current.keyword)]));
   }
-  $('content').replaceChildren(...sections.flat());
+  $('content').replaceChildren(...sections.flat().filter(Boolean));
 }
 
 // ---------- home ----------
@@ -315,6 +388,7 @@ async function renderHome() {
   $('q').value = '';
   $('toolbar').hidden = true;
   $('filters').hidden = true;
+  $('uni-pills').hidden = true;
   $('queries').textContent = '';
   $('banner').replaceChildren();
   let home;
@@ -379,11 +453,33 @@ function didYouMeanRow(keyword) {
 
 function showLoading() {
   $('banner').replaceChildren();
+  $('uni-pills').hidden = true;
   $('queries').textContent = '';
   $('content').replaceChildren(
     h('p', { class: 'summary' }, 'Searching GitHub… a first search can take up to 20 seconds.'),
     ...Array.from({ length: 4 }, () => h('div', { class: 'skeleton' })));
 }
+
+// ---------- theme: auto → light → dark ----------
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_ICONS = { auto: '◐', light: '☀', dark: '☾' };
+function applyTheme(t) {
+  if (t === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  const btn = $('theme');
+  btn.textContent = THEME_ICONS[t];
+  btn.title = `Theme: ${t}`;
+  btn.setAttribute('aria-label', `Theme: ${t}`);
+}
+let theme = 'auto';
+try { theme = localStorage.getItem('sf-theme') ?? 'auto'; } catch { /* storage unavailable */ }
+if (!THEMES.includes(theme)) theme = 'auto';
+applyTheme(theme);
+$('theme').addEventListener('click', () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  applyTheme(theme);
+  try { localStorage.setItem('sf-theme', theme); } catch { /* ignore */ }
+});
 
 // ---------- wiring ----------
 $('search-form').addEventListener('submit', (e) => { e.preventDefault(); runSearch($('q').value); });

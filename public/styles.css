@@ -14,10 +14,31 @@
   --error-text: #8a1c12;
   --skeleton: #ecebe6;
   --radius: 10px;
+  --uni-mix: 100%;
   color-scheme: light;
 }
+/* Dark tokens apply when the system is dark (unless the user picked light), or when the user picked dark. */
+:root[data-theme="dark"] {
+  --bg: #151514;
+  --surface: #1e1e1c;
+  --text: #ecebe6;
+  --muted: #a3a29b;
+  --border: #33322e;
+  --accent: #7c9cff;
+  --accent-text: #0c1330;
+  --chip: #2a2c35;
+  --official: #5fd39a;
+  --warn-bg: #3a3112;
+  --warn-text: #f3dc8f;
+  --error-bg: #3d1a17;
+  --error-text: #ffb4ab;
+  --skeleton: #2a2a27;
+  --uni-mix: 52%;
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    --uni-mix: 52%;
     --bg: #151514;
     --surface: #1e1e1c;
     --text: #ecebe6;
@@ -227,25 +248,22 @@ h2.section .count { color: var(--muted); font-weight: 400; }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
 /* ---------- university accents ---------- */
-[data-uni] { --uni: #6b6b66; }
-[data-uni="mit"] { --uni: #a31f34; }
-[data-uni="stanford"] { --uni: #8c1515; }
-[data-uni="cmu"] { --uni: #c41230; }
-[data-uni="berkeley"] { --uni: #003262; }
-[data-uni="harvard"] { --uni: #a51c30; }
-[data-uni="princeton"] { --uni: #e77500; }
-[data-uni="cornell"] { --uni: #b31b1b; }
-[data-uni="uw"] { --uni: #4b2e83; }
-[data-uni="uiuc"] { --uni: #e84a27; }
-[data-uni="epfl"] { --uni: #e2001a; }
-[data-uni="eth"] { --uni: #1f407a; }
-@media (prefers-color-scheme: dark) {
-  [data-uni] { --uni: #a3a29b; }
-  [data-uni="mit"], [data-uni="stanford"], [data-uni="cmu"], [data-uni="harvard"], [data-uni="cornell"], [data-uni="epfl"] { --uni: #ff8a80; }
-  [data-uni="berkeley"], [data-uni="eth"] { --uni: #8ab4ff; }
-  [data-uni="princeton"], [data-uni="uiuc"] { --uni: #ffb366; }
-  [data-uni="uw"] { --uni: #c3a6ff; }
-}
+/* Each school has a base color; in dark mode it is lightened (--uni-mix) so it stays readable. */
+[data-uni] { --uni-base: #6b6b66; --uni: color-mix(in srgb, var(--uni-base) var(--uni-mix), #fff); }
+[data-uni="mit"] { --uni-base: #a31f34; }
+[data-uni="stanford"] { --uni-base: #8c1515; }
+[data-uni="cmu"] { --uni-base: #c41230; }
+[data-uni="berkeley"] { --uni-base: #003262; }
+[data-uni="harvard"] { --uni-base: #a51c30; }
+[data-uni="princeton"] { --uni-base: #e77500; }
+[data-uni="cornell"] { --uni-base: #b31b1b; }
+[data-uni="uw"] { --uni-base: #4b2e83; }
+[data-uni="uiuc"] { --uni-base: #e84a27; }
+[data-uni="epfl"] { --uni-base: #e2001a; }
+[data-uni="eth"] { --uni-base: #1f407a; }
+[data-uni="caltech"] { --uni-base: #ff6c0c; }
+[data-uni="gatech"] { --uni-base: #b3a369; }
+[data-uni="toronto"] { --uni-base: #1e3765; }
 .uni-badge {
   font-size: 11px;
   font-weight: 600;
@@ -256,6 +274,56 @@ h2.section .count { color: var(--muted); font-weight: 400; }
   background: color-mix(in srgb, var(--uni) 8%, transparent);
   white-space: nowrap;
 }
+
+/* ---------- results polish ---------- */
+.theme-toggle { width: 34px; height: 34px; padding: 0; font-size: 16px; line-height: 1; flex-shrink: 0; }
+.card { border-left: 4px solid var(--uni, var(--border)); }
+.card-head { align-items: center; }
+.card-code { font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-title { font-size: 16px; font-weight: 600; }
+.card-summary { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 13px;
+  border-color: var(--border);
+}
+.pill[data-uni] { border-color: color-mix(in srgb, var(--uni) 40%, transparent); color: var(--uni); }
+.pill[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.pill[data-uni][aria-pressed="true"] { background: var(--uni); border-color: var(--uni); color: var(--surface); }
+.pill-count { font-size: 11px; opacity: .75; }
+
+.why-btn {
+  font-size: 12px;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--muted);
+  margin-left: auto;
+}
+.why-btn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.why {
+  margin: 8px 0 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  max-width: 460px;
+  font-size: 13px;
+}
+.why-score { font-weight: 700; margin-bottom: 6px; }
+.why-row { display: grid; grid-template-columns: 82px 1fr 40px; align-items: center; gap: 8px; }
+.why-row meter { width: 100%; height: 8px; }
+.why-val { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.why-note { margin: 6px 0 0; color: var(--muted); }
+
+.related { margin-top: 12px; }
+.chips-row.left { justify-content: flex-start; }
+.chip-vi { color: var(--muted); font-size: 12px; margin-left: 6px; }
 
 /* ---------- home ---------- */
 .hero { text-align: center; padding: 28px 8px 8px; }
@@ -327,6 +395,8 @@ h2.section .count { color: var(--muted); font-weight: 400; }
     padding-bottom: 6px;
   }
   .course-tile { scroll-snap-align: start; }
+  .pills { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .pill { flex-shrink: 0; }
   .topic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .top { flex-wrap: wrap; padding: 10px 16px; gap: 8px 12px; }
   .search { order: 3; flex-basis: 100%; max-width: none; }

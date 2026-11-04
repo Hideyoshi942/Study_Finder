@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../lib/config.js';
 import { createFeed, feedQueries } from '../lib/feed.js';
-import { recommend, topicOf } from '../lib/suggest.js';
+import { recommend, topicOf, relatedFor } from '../lib/suggest.js';
 
 const config = await loadConfig(path.resolve(import.meta.dirname, '..'));
 const NOW = Date.parse('2026-11-04T00:00:00Z');
@@ -104,6 +104,16 @@ test('recommend mixes courses from every past search', () => {
   assert.equal(r.courses[0].reason, 'Because you searched Distributed Systems');
   assert.equal(r.courses[1].reason, 'Because you searched Machine Learning');
   assert.equal(new Set(r.courses.map((c) => c.topic)).size >= 4, true, 'several related topics appear');
+});
+
+test('relatedFor: related topics and similar courses not already shown', () => {
+  const r = relatedFor({ keyword: 'distributed systems', cards: [{ courseCode: '6.5840' }] }, config);
+  assert.equal(r.topic.id, 'distributed-systems');
+  assert.deepEqual(r.topics.map((t) => t.id), ['operating-systems', 'database-systems', 'computer-networks', 'computer-systems']);
+  assert.ok(!r.courses.some((c) => c.code === '6.5840'), 'shown course excluded');
+  assert.equal(r.courses[0].reason, 'Same topic');
+  assert.ok(r.courses.length <= 6);
+  assert.deepEqual(relatedFor({ keyword: 'zzz', cards: [] }, config), { topic: null, topics: [], courses: [] });
 });
 
 test('recommend without history returns only the starter path', () => {
