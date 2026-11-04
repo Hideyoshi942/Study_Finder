@@ -1,6 +1,8 @@
 // Study Finder UI. Renders a saved search and applies filters in the browser.
 // All data goes into the DOM through textContent / attributes, never innerHTML.
 
+import { rankSuggestions, didYouMean } from './suggest.js';
+
 const $ = (id) => document.getElementById(id);
 const LEVELS = ['intro', 'intermediate', 'advanced', 'unknown'];
 const TYPE_LABELS = {
@@ -11,6 +13,7 @@ const CARD_PREVIEW = 4;
 const YEAR = 365.25 * 24 * 3600 * 1000;
 
 let current = null; // the loaded search
+let suggestItems = []; // from /api/suggest-index
 const ui = { universities: new Set(), types: new Set(), levels: new Set() };
 
 function h(tag, attrs = {}, ...children) {
@@ -40,6 +43,7 @@ async function runSearch(q, { refresh = false, push = true } = {}) {
   q = q.trim();
   if (!q) return;
   $('q').value = q;
+  closeSuggestions();
   if (push) history.pushState({ q }, '', `?q=${encodeURIComponent(q)}`);
   document.title = `${q} · Study Finder`;
   showLoading();
@@ -58,7 +62,64 @@ async function runSearch(q, { refresh = false, push = true } = {}) {
   }
   loadHistory();
   loadRate();
+  loadSuggestions();
 }
+
+async function loadSuggestions() {
+  try { suggestItems = (await api('/api/suggest-index')).items; } catch { /* suggestions are optional */ }
+}
+
+// ---------- suggestions (ARIA combobox) ----------
+const KIND_LABELS = { history: 'Recent', popular: 'Popular', topic: 'Topic', course: 'Course', university: 'University' };
+let active = -1;
+let shown = [];
+
+function openSuggestions() {
+  shown = rankSuggestions(suggestItems, $('q').value, 8);
+  active = -1;
+  const list = $('suggestions');
+  if (!shown.length) return closeSuggestions();
+  list.replaceChildren(...shown.map((s, i) => h('li', {
+    id: `sg-${i}`, role: 'option', class: 'suggestion', 'aria-selected': 'false',
+    onmousedown: (e) => { e.preventDefault(); runSearch(s.query); },
+  },
+  h('span', { class: `sg-kind sg-${s.kind}` }, KIND_LABELS[s.kind]),
+  h('span', { class: 'sg-label' }, s.label),
+  s.sub ? h('span', { class: 'sg-sub' }, s.sub) : null)));
+  list.hidden = false;
+  $('q').setAttribute('aria-expanded', 'true');
+  $('q').removeAttribute('aria-activedescendant');
+}
+
+function closeSuggestions() {
+  $('suggestions').hidden = true;
+  $('q').setAttribute('aria-expanded', 'false');
+  $('q').removeAttribute('aria-activedescendant');
+  active = -1;
+}
+
+function moveActive(delta) {
+  if ($('suggestions').hidden) return openSuggestions();
+  // Cycles through -1 (the input itself) and 0..n-1.
+  active += delta;
+  if (active >= shown.length) active = -1;
+  else if (active < -1) active = shown.length - 1;
+  [...$('suggestions').children].forEach((li, i) => li.setAttribute('aria-selected', String(i === active)));
+  if (active >= 0) {
+    $('q').setAttribute('aria-activedescendant', `sg-${active}`);
+    $(`sg-${active}`).scrollIntoView({ block: 'nearest' });
+  } else $('q').removeAttribute('aria-activedescendant');
+}
+
+$('q').addEventListener('input', openSuggestions);
+$('q').addEventListener('focus', openSuggestions);
+$('q').addEventListener('blur', () => setTimeout(closeSuggestions, 100));
+$('q').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1); }
+  else if (e.key === 'Escape') closeSuggestions();
+  else if (e.key === 'Enter' && active >= 0 && !$('suggestions').hidden) { e.preventDefault(); runSearch(shown[active].query); }
+});
 
 async function loadHistory() {
   try {
@@ -210,9 +271,16 @@ function render() {
   if (!sections.length) {
     sections.push(h('div', { class: 'empty' }, total
       ? [h('h1', {}, 'No results match these filters'), h('button', { type: 'button', onclick: () => resetFilters() }, 'Reset filters')]
-      : [h('h1', {}, 'Nothing found'), h('p', {}, 'Try a broader topic, an English term, or a course code.')]));
+      : [h('h1', {}, 'Nothing found'), h('p', {}, 'Try a broader topic, an English term, or a course code.'), didYouMeanRow(current.keyword)]));
   }
   $('content').replaceChildren(...sections.flat());
+}
+
+function didYouMeanRow(keyword) {
+  const options = didYouMean(suggestItems, keyword);
+  if (!options.length) return null;
+  return h('p', { class: 'did-you-mean' }, 'Did you mean ',
+    options.map((o, i) => [i ? ', ' : '', h('button', { type: 'button', class: 'link', onclick: () => runSearch(o.query) }, o.label)]), '?');
 }
 
 function showLoading() {
@@ -242,3 +310,4 @@ const initial = new URLSearchParams(location.search).get('q');
 if (initial) runSearch(initial, { push: false });
 loadHistory();
 loadRate();
+loadSuggestions();

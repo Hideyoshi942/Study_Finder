@@ -11,8 +11,10 @@
   <header class="top">
     <a class="brand" href="/">Study Finder</a>
     <form id="search-form" class="search" role="search">
-      <input id="q" name="q" type="search" placeholder="Search a topic: distributed systems, học máy, CS229…" autocomplete="off" maxlength="100" aria-label="Keyword">
+      <input id="q" name="q" type="search" placeholder="Search a topic: distributed systems, học máy, CS229…" autocomplete="off" maxlength="100" aria-label="Keyword"
+        role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggestions">
       <button type="submit">Search</button>
+      <ul id="suggestions" class="suggestions" role="listbox" aria-label="Suggestions" hidden></ul>
     </form>
     <span id="rate" class="rate" title="GitHub search budget"></span>
   </header>
