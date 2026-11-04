@@ -22,6 +22,24 @@ $env:GITHUB_TOKEN = "github_pat_..."; npm start
 
 or put `GITHUB_TOKEN=github_pat_...` in a `.env` file next to `package.json` (git-ignored). The token stays on the server and is never sent to the browser.
 
+## Features
+
+- **Suggestions while typing**: topics in English or Vietnamese (accents optional), course codes by prefix (`cs22` → CS221, CS224N, CS229), universities, recent searches, and typo tolerance. "Did you mean" appears when a search finds nothing.
+- **Home page**:
+  - popular searches;
+  - recommendations based on your recent searches;
+  - **New on GitHub** feed: *This semester* (new repos for well-known courses) and *New courses*;
+  - 27 topic tiles;
+  - a starter path.
+- **Results page**:
+  - course cards with the university's color and a summary (repos, videos, labs, notes);
+  - university pills;
+  - a **why?** panel that explains each score;
+  - related topics and similar courses;
+  - a light/dark/auto theme toggle.
+
+The feed refreshes in the background every 6 hours (3 GitHub searches), and only when at least 5 searches are left in the shared budget.
+
 ## How it works
 
 1. **Expand the keyword** (`lib/query.js`): Vietnamese → English (`học máy` → `machine learning`), abbreviations (`os`, `ml`, `dsa`), and the course codes for the topic (`distributed systems` → `6.5840`, `6.824`, `15-440`, …).
