@@ -33,7 +33,17 @@ const fmtStars = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).r
 const month = (iso) => (iso ? iso.slice(0, 7) : '');
 
 // ---------- data ----------
+// On GitHub Pages there is no server: static.json marks the static build, and a browser-only
+// backend answers the same API calls. Locally the server returns 404 for static.json.
+let backend = null;
+try {
+  const res = await fetch('static.json');
+  if (res.ok && (await res.json()).static) backend = await (await import('./static-backend.js')).createStaticBackend();
+} catch { /* local server mode */ }
+const STATIC = Boolean(backend);
+
 async function api(path) {
+  if (backend) return backend.get(path);
   const res = await fetch(path);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
@@ -63,6 +73,12 @@ function hideProgress() { $('progress').hidden = true; progressValue = 0; }
 
 // Resolves with the final search. Rejects with err.fallback = true when the stream could not start.
 function streamSearch(q, refresh, onPartial) {
+  if (backend) {
+    return backend.search(q, { refresh, onEvent: (e) => {
+      if (e.type === 'progress') showProgress(e);
+      else if (e.type === 'partial') onPartial(e.search);
+    } });
+  }
   return new Promise((resolve, reject) => {
     if (!window.EventSource) return reject(Object.assign(new Error('EventSource unavailable'), { fallback: true }));
     const es = new EventSource(`/api/search/stream?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`);
@@ -199,6 +215,11 @@ async function loadRate() {
   try {
     const r = await api('/api/rate-limit');
     const el = $('rate');
+    if (r.static) {
+      el.textContent = r.remaining == null ? 'Pages' : `Pages · GitHub ${r.remaining}/${r.limit}`;
+      el.title = `Popular topics are prebuilt${backend.builtAt ? ` (updated ${new Date(backend.builtAt).toLocaleString()})` : ''}. Other keywords are searched live from your browser without a token (about 10 searches/min).`;
+      return;
+    }
     if (r.remaining == null) {
       el.textContent = r.authenticated ? 'GitHub token' : 'No GitHub token';
       el.title = r.authenticated ? '30 searches/min' : '10 searches/min, shared with everyone behind this proxy';
@@ -476,6 +497,7 @@ function render() {
 
 // ---------- writes ----------
 async function apiSend(method, path, body = {}) {
+  if (backend) return backend.send(method, path, body);
   const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -644,8 +666,21 @@ function updateToolbarExtras() {
   btn.setAttribute('aria-pressed', String(Boolean(w)));
   btn.textContent = w ? '● Watching' : 'Watch';
   btn.title = w ? `Checked every ${w.intervalHours} h${w.lastRunAt ? ` · last ${ago(w.lastRunAt)}` : ''}. Click to stop.` : 'Re-check this search every day and mark new results';
+  if (STATIC) btn.title = w ? 'Results new since your last visit are marked. Click to stop.' : 'Mark results that are new since your last visit';
   const externals = Object.values(current.resources).filter((r) => r.kind === 'external');
-  $('check-links').hidden = !externals.length;
+  // Checking other sites needs the local server (browsers block cross-site checks).
+  $('check-links').hidden = STATIC || !externals.length;
+}
+
+// On Pages, exports are built in the browser instead of by the server.
+for (const format of ['md', 'csv', 'json']) {
+  $(`export-${format}`).addEventListener('click', (e) => {
+    if (!backend || !current) return;
+    e.preventDefault();
+    const f = filterState();
+    backend.download(current, format, { hideSolutions: f.hideSolutions, minStars: f.minStars });
+    $('export-menu').open = false;
+  });
 }
 
 $('watch').addEventListener('click', async () => {

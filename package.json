@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node --use-env-proxy server.js",
     "test": "node --test \"test/*.test.js\"",
-    "smoke": "node --use-env-proxy scripts/smoke.js"
+    "smoke": "node --use-env-proxy scripts/smoke.js",
+    "build": "node --use-env-proxy build.js"
   }
 }

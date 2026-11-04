@@ -27,6 +27,24 @@ $env:GITHUB_TOKEN = "github_pat_..."; npm start
 
 or put `GITHUB_TOKEN=github_pat_...` in a `.env` file next to `package.json` (git-ignored). The token stays on the server and is never sent to the browser.
 
+## GitHub Pages (static site)
+
+`.github/workflows/deploy.yml` builds a static copy every 6 hours, and on every push to `develop`:
+
+- `build.js` runs the real pipeline for the popular searches and every topic tile, plus the feed, and writes `dist/`.
+- On the Pages site:
+  - prebuilt topics open instantly;
+  - any other keyword is searched **live from the visitor's browser without a token** (about 10 searches/min per visitor);
+  - lists, watches and history are stored in that browser;
+  - exports are built in the browser;
+  - **Check links** needs the local app, so it is hidden.
+
+**No personal token is used on GitHub.** The workflow uses the `GITHUB_TOKEN` that Actions creates for each run (it expires with the job and is scoped to this repo). It runs with `contents: read` only, and never on pull requests. `build.js` refuses to publish when any output file contains something that looks like a token. Your own token stays in the local `.env`, which is git-ignored.
+
+One-time setup: **Settings → Pages → Source: GitHub Actions**.
+
+Local test of the static build: `$env:STATIC_LIMIT=3; npm run build`, then serve `dist/`.
+
 ## Features
 
 **Search**

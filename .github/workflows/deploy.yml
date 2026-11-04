@@ -1,0 +1,59 @@
+name: Build and deploy Study Finder
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'   # every 6 hours (UTC), at :23 to avoid the top-of-hour rush
+  workflow_dispatch:          # "Run workflow" button in the Actions tab
+  push:
+    branches: [develop]
+# No pull_request triggers: workflows from forks must never run with this repo's token.
+
+# Least privilege: read the code, publish to Pages. Nothing can be written back to the repo.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # do not leave a token in .git/config
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/configure-pages@v6
+
+      - name: Test
+        run: npm test
+
+      # The token GitHub creates for this run (expires when the job ends, scoped to this repo).
+      # No personal token is stored in the repo or its secrets. build.js refuses to publish
+      # if any output file contains something that looks like a token.
+      - name: Build static site
+        run: node build.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
