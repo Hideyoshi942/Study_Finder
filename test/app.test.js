@@ -68,7 +68,7 @@ test('history, saved search, export and rate limit', async () => {
   await get('/api/search?q=compilers');
   const history = (await get('/api/searches')).body;
   assert.deepEqual(history.map((h) => h.id), ['compilers', 'distributed-systems']);
-  assert.deepEqual(history[0].counts, { cards: 0, awesome: 0, other: 1 });
+  assert.deepEqual(history[0].counts, { cards: 0, sites: 0, awesome: 0, other: 1 });
 
   assert.equal((await get('/api/searches/compilers')).body.keyword, 'compilers');
   assert.equal((await get('/api/searches/nope')).res.status, 404);

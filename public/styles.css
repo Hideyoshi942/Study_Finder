@@ -282,6 +282,21 @@ h2.section .count { color: var(--muted); font-weight: 400; }
 .card-code { font-weight: 700; font-variant-numeric: tabular-nums; }
 .card-title { font-size: 16px; font-weight: 600; }
 .card-summary { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.card-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.link-chip {
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--uni, var(--accent)) 40%, transparent);
+  background: color-mix(in srgb, var(--uni, var(--accent)) 6%, transparent);
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.link-chip strong { color: var(--uni, var(--accent)); font-weight: 600; }
+.link-chip.sub { border-style: dashed; color: var(--muted); }
 
 .pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
 .pill {

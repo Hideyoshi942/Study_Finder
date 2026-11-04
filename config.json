@@ -18,6 +18,11 @@
     "cirosantilli/china-dictatorship",
     "gege-circle/.github"
   ],
+  "awesome": {
+    "seeds": ["prakhar1989/awesome-courses", "Developer-Y/cs-video-courses", "ossu/computer-science"],
+    "fromResults": 2,
+    "maxExternal": 40
+  },
   "feed": {
     "intervalHours": 6,
     "minBudget": 5,

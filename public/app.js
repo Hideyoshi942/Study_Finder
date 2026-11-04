@@ -165,8 +165,9 @@ function passes(r, f) {
   if (ui.types.size && !r.types.some((t) => ui.types.has(t))) return false;
   if (ui.levels.size && !ui.levels.has(r.level)) return false;
   if (ui.langs.size && !ui.langs.has(r.lang ?? 'unknown')) return false;
-  if ((r.repo?.stars ?? 0) < f.minStars) return false;
-  if (f.years && (!r.repo?.pushedAt || Date.now() - Date.parse(r.repo.pushedAt) > f.years * YEAR)) return false;
+  // Links from curated lists have no stars or push date; those two filters apply to repos only.
+  if (r.repo && r.repo.stars < f.minStars) return false;
+  if (r.repo && f.years && (!r.repo.pushedAt || Date.now() - Date.parse(r.repo.pushedAt) > f.years * YEAR)) return false;
   if (f.official && !r.official) return false;
   if (f.hideSolutions && solutionsOnly(r.types)) return false;
   return true;
@@ -218,7 +219,7 @@ const FACTORS = [
 ];
 const MATCHED_BY = {
   org: 'official GitHub org', course: 'known course code', name: 'university name in the description',
-  readme: 'a university link in the README', 'code-pattern': 'course code pattern',
+  readme: 'a university link in the README', link: 'the link points to a university site', 'code-pattern': 'course code pattern',
 };
 
 function readmeNote(rd) {
@@ -242,7 +243,8 @@ function whyPanel(r) {
   const notes = [];
   if (b.penalties) notes.push(`Penalty −${b.penalties} (fork, solutions only, or no description)`);
   if (r.universityMatchedBy) notes.push(`${r.universityName}: matched by ${MATCHED_BY[r.universityMatchedBy] ?? r.universityMatchedBy}`);
-  notes.push(r.readme ? readmeNote(r.readme) : 'README not read (only the top results are)');
+  if (r.kind === 'external') notes.push(`Curated in ${r.lists.join(', ')}${r.section ? ` (${r.section})` : ''}. Stars are replaced by a fixed 60% for curated links.`);
+  else notes.push(r.readme ? readmeNote(r.readme) : 'README not read (only the top results are)');
   if (r.foundBy?.length) notes.push(`Found by the ${r.foundBy.join(', ')} quer${r.foundBy.length > 1 ? 'ies' : 'y'}`);
   return h('div', { class: 'why' },
     h('div', { class: 'why-score' }, `Score ${r.score}`),
@@ -266,8 +268,10 @@ function item(r, { showUni = false, created = false } = {}) {
       h('a', { class: 'item-title', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.title),
       showUni && r.universityName ? h('span', { class: 'uni-badge', 'data-uni': r.university }, r.universityName) : null,
       r.official ? h('span', { class: 'badge official' }, 'official') : null,
-      h('span', { class: 'meta' }, `★ ${fmtStars(r.repo?.stars ?? 0)}`,
-        created && r.repo?.createdAt ? ` · created ${ago(r.repo.createdAt)}` : r.repo?.pushedAt ? ` · ${month(r.repo.pushedAt)}` : ''),
+      r.kind === 'external'
+        ? h('span', { class: 'meta' }, r.host)
+        : h('span', { class: 'meta' }, `★ ${fmtStars(r.repo?.stars ?? 0)}`,
+          created && r.repo?.createdAt ? ` · created ${ago(r.repo.createdAt)}` : r.repo?.pushedAt ? ` · ${month(r.repo.pushedAt)}` : ''),
       created && r.courseCode && r.universityName ? h('span', { class: 'badge code' }, `${r.universityName} ${r.courseCode}`) : null,
       h('span', { class: 'chips' }, r.types.map((t) => h('span', { class: 'badge' }, TYPE_LABELS[t] ?? t))),
       whyBtn),
@@ -275,16 +279,36 @@ function item(r, { showUni = false, created = false } = {}) {
   return li;
 }
 
-// "12 repos · ★ 3.3k top · videos · labs · notes"
+// "12 repos · ★ 3.3k top · 2 course links · videos · labs · notes"
 function cardSummary(members) {
+  const repos = members.filter((m) => m.repo);
+  const links = members.length - repos.length;
   const has = (t) => members.some((m) => m.types.includes(t));
-  const parts = [`${members.length} repo${members.length > 1 ? 's' : ''}`, `★ ${fmtStars(Math.max(...members.map((m) => m.repo?.stars ?? 0)))} top`];
+  const parts = [];
+  if (repos.length) parts.push(`${repos.length} repo${repos.length > 1 ? 's' : ''}`, `★ ${fmtStars(Math.max(...repos.map((m) => m.repo.stars)))} top`);
+  if (links) parts.push(`${links} course link${links > 1 ? 's' : ''}`);
   for (const [t, label] of [['videos', 'videos'], ['lecture-notes', 'notes'], ['assignments', 'labs'], ['book', 'book']]) if (has(t)) parts.push(label);
   return parts.join(' · ');
 }
 
-function card(c, members) {
-  const levels = [...new Set(members.map((m) => m.level).filter((l) => l !== 'unknown'))];
+// Course websites and video playlists from curated lists, as a row of link chips.
+function courseLinks(externals) {
+  if (!externals.length) return null;
+  const chips = [];
+  for (const x of externals.slice(0, 4)) {
+    const kind = x.types.includes('videos') && /youtube|youtu\.be|bilibili|vimeo/.test(x.host) ? 'Videos' : 'Course site';
+    chips.push(h('a', { class: 'link-chip', href: x.url, target: '_blank', rel: 'noopener noreferrer', title: x.title }, h('strong', {}, kind), ` ${x.host}`));
+    for (const l of x.links.slice(0, 3)) {
+      chips.push(h('a', { class: 'link-chip sub', href: l.url, target: '_blank', rel: 'noopener noreferrer' }, l.label));
+    }
+  }
+  return h('div', { class: 'card-links' }, chips);
+}
+
+function card(c, all) {
+  const externals = all.filter((m) => m.kind === 'external');
+  const members = all.filter((m) => m.kind !== 'external');
+  const levels = [...new Set(all.map((m) => m.level).filter((l) => l !== 'unknown'))];
   const list = h('ul', { class: 'list' }, members.slice(0, CARD_PREVIEW).map((m) => item(m)));
   const rest = members.length - CARD_PREVIEW;
   const more = rest > 0
@@ -297,8 +321,9 @@ function card(c, members) {
       h('span', { class: 'card-title' }, c.title),
       members.some((m) => m.official) ? h('span', { class: 'badge official' }, 'official') : null,
       levels.map((l) => h('span', { class: 'badge' }, l))),
-    h('p', { class: 'card-summary' }, cardSummary(members)),
-    list, more);
+    h('p', { class: 'card-summary' }, cardSummary(all)),
+    courseLinks(externals),
+    members.length ? list : null, more);
 }
 
 function uniPills() {
@@ -343,9 +368,10 @@ function render() {
     .map((c) => ({ c, members: pick(c.resourceIds) }))
     .filter((x) => x.members.length)
     .sort((a, b) => ($('sort').value === 'score' ? b.c.score - a.c.score : sortKey(b.members[0]) - sortKey(a.members[0])));
+  const sites = pick(current.sites ?? []);
   const awesome = pick(current.awesome);
   const other = pick(current.other);
-  const shown = cards.reduce((n, x) => n + x.members.length, 0) + awesome.length + other.length;
+  const shown = cards.reduce((n, x) => n + x.members.length, 0) + sites.length + awesome.length + other.length;
   const total = Object.keys(current.resources).length;
 
   $('toolbar').hidden = false;
@@ -357,6 +383,7 @@ function render() {
 
   const sections = [];
   if (cards.length) sections.push(h('h2', { class: 'section' }, 'University courses ', h('span', { class: 'count' }, `(${cards.length})`)), cards.map((x) => card(x.c, x.members)));
+  if (sites.length) sections.push(h('h2', { class: 'section' }, 'Course sites & videos ', h('span', { class: 'count' }, `(${sites.length})`)), h('ul', { class: 'list flat' }, sites.map((r) => item(r, { showUni: true }))));
   if (awesome.length) sections.push(h('h2', { class: 'section' }, 'Awesome lists & roadmaps ', h('span', { class: 'count' }, `(${awesome.length})`)), h('ul', { class: 'list flat' }, awesome.map((r) => item(r, { showUni: true }))));
   if (other.length) sections.push(h('h2', { class: 'section' }, 'Other materials ', h('span', { class: 'count' }, `(${other.length})`)), h('ul', { class: 'list flat' }, other.map((r) => item(r, { showUni: true }))));
   uniPills();

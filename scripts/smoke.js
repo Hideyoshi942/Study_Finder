@@ -27,13 +27,15 @@ for (const kw of keywords) {
   for (const c of s.cards.slice(0, 6)) {
     console.log(`   ${String(c.score).padStart(5)}  ${c.universityName} ${c.courseCode}: ${c.title}  [${c.resourceIds.length} repos]`);
   }
-  for (const [label, ids] of [['Awesome', s.awesome], ['Other', s.other]]) {
-    console.log(`  ${label}:`);
+  for (const [label, ids] of [['Sites & videos', s.sites ?? []], ['Awesome', s.awesome], ['Other', s.other]]) {
+    console.log(`  ${label}: ${ids.length}`);
     for (const id of ids.slice(0, 5)) {
       const r = s.resources[id];
-      console.log(`   ${String(r.score).padStart(5)}  ★${r.repo.stars}  ${r.title}${r.universityName ? ` (${r.universityName})` : ''}`);
+      const where = r.repo ? `★${r.repo.stars}` : r.host;
+      console.log(`   ${String(r.score).padStart(5)}  ${where}  ${r.title}${r.universityName ? ` (${r.universityName})` : ''}`);
     }
   }
+  console.log(`  Awesome mining: ${JSON.stringify(s.stats.awesome)}`);
   console.log(`  READMEs: ${JSON.stringify(s.stats.readmes)}  Queries: ${s.expandedQueries.length}`);
   console.log(`  Rate limit: ${JSON.stringify(github.rateLimit())}`);
 }
