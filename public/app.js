@@ -14,7 +14,8 @@ const YEAR = 365.25 * 24 * 3600 * 1000;
 
 let current = null; // the loaded search
 let suggestItems = []; // from /api/suggest-index
-const ui = { universities: new Set(), types: new Set(), levels: new Set() };
+const ui = { universities: new Set(), types: new Set(), levels: new Set(), langs: new Set() };
+const LANGS = { en: 'English', zh: 'Chinese', vi: 'Vietnamese', other: 'Other', unknown: 'Not checked' };
 
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -163,6 +164,7 @@ function passes(r, f) {
   if (ui.universities.size && !ui.universities.has(uni)) return false;
   if (ui.types.size && !r.types.some((t) => ui.types.has(t))) return false;
   if (ui.levels.size && !ui.levels.has(r.level)) return false;
+  if (ui.langs.size && !ui.langs.has(r.lang ?? 'unknown')) return false;
   if ((r.repo?.stars ?? 0) < f.minStars) return false;
   if (f.years && (!r.repo?.pushedAt || Date.now() - Date.parse(r.repo.pushedAt) > f.years * YEAR)) return false;
   if (f.official && !r.official) return false;
@@ -191,10 +193,14 @@ function buildFilters() {
 
   const levels = count((r) => r.level);
   checkboxGroup($('f-level'), LEVELS.filter((l) => levels.has(l)).map((l) => [l, l[0].toUpperCase() + l.slice(1), levels.get(l)]), ui.levels);
+
+  // Only the top results have their README read, so the rest are "Not checked".
+  const langs = count((r) => r.lang ?? 'unknown');
+  checkboxGroup($('f-lang'), Object.keys(LANGS).filter((l) => langs.has(l)).map((l) => [l, LANGS[l], langs.get(l)]), ui.langs);
 }
 
 function resetFilters(rerender = true) {
-  ui.universities.clear(); ui.types.clear(); ui.levels.clear();
+  ui.universities.clear(); ui.types.clear(); ui.levels.clear(); ui.langs.clear();
   $('f-stars').value = 0; $('f-updated').value = '0'; $('f-official').checked = false; $('f-solutions').checked = true;
   if (rerender && current) { buildFilters(); render(); }
 }
@@ -210,7 +216,18 @@ function sortKey(r) {
 const FACTORS = [
   ['stars', 'Stars'], ['relevance', 'Relevance'], ['university', 'University'], ['content', 'Content'], ['freshness', 'Freshness'],
 ];
-const MATCHED_BY = { org: 'official GitHub org', course: 'known course code', name: 'university name in the description', 'code-pattern': 'course code pattern' };
+const MATCHED_BY = {
+  org: 'official GitHub org', course: 'known course code', name: 'university name in the description',
+  readme: 'a university link in the README', 'code-pattern': 'course code pattern',
+};
+
+function readmeNote(rd) {
+  const s = rd.signals;
+  const parts = [[s.lectures, 'lecture mentions'], [s.assignments, 'labs/assignments'], [s.videos, 'video links'], [s.pdfs, 'PDFs']]
+    .filter(([n]) => n).map(([n, label]) => `${n} ${label}`);
+  if (rd.domains.length) parts.push(`links ${rd.domains.slice(0, 2).join(', ')}`);
+  return `README: ${parts.length ? parts.join(' · ') : 'no course signals'}`;
+}
 
 // "why?" panel: one bar per scoring factor, plus how the university was found.
 function whyPanel(r) {
@@ -225,6 +242,7 @@ function whyPanel(r) {
   const notes = [];
   if (b.penalties) notes.push(`Penalty −${b.penalties} (fork, solutions only, or no description)`);
   if (r.universityMatchedBy) notes.push(`${r.universityName}: matched by ${MATCHED_BY[r.universityMatchedBy] ?? r.universityMatchedBy}`);
+  notes.push(r.readme ? readmeNote(r.readme) : 'README not read (only the top results are)');
   if (r.foundBy?.length) notes.push(`Found by the ${r.foundBy.join(', ')} quer${r.foundBy.length > 1 ? 'ies' : 'y'}`);
   return h('div', { class: 'why' },
     h('div', { class: 'why-score' }, `Score ${r.score}`),

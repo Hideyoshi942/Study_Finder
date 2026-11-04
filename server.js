@@ -8,6 +8,7 @@ import { createGitHub } from './lib/github.js';
 import { createSearcher } from './lib/search.js';
 import { createApp } from './lib/app.js';
 import { createFeed } from './lib/feed.js';
+import { createReadmeFetcher } from './lib/readme.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(ROOT, 'data');
@@ -19,7 +20,8 @@ const removed = await cache.prune(7 * 24 * 3600_000);
 if (removed) console.log(`Pruned ${removed} old cache files`);
 
 const github = createGitHub({ token, cache });
-const searcher = createSearcher({ config, github });
+const readmes = createReadmeFetcher({ cache: createCache({ dir: path.join(DATA, 'cache', 'readme'), ttlMs: 7 * 24 * 3600_000 }) });
+const searcher = createSearcher({ config, github, readmes });
 const feed = createFeed({ config, github, dataDir: DATA });
 const handler = createApp({ config, searcher, github, feed, dataDir: DATA, publicDir: path.join(ROOT, 'public') });
 

@@ -6,6 +6,7 @@ import { loadConfig, loadToken } from '../lib/config.js';
 import { createCache } from '../lib/cache.js';
 import { createGitHub } from '../lib/github.js';
 import { createSearcher } from '../lib/search.js';
+import { createReadmeFetcher } from '../lib/readme.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const config = await loadConfig(ROOT);
@@ -13,7 +14,8 @@ const github = createGitHub({
   token: await loadToken(ROOT),
   cache: createCache({ dir: path.join(ROOT, 'data', 'cache'), ttlMs: config.cacheHours * 3600_000 }),
 });
-const searcher = createSearcher({ config, github });
+const readmes = createReadmeFetcher({ cache: createCache({ dir: path.join(ROOT, 'data', 'cache', 'readme'), ttlMs: 7 * 24 * 3600_000 }) });
+const searcher = createSearcher({ config, github, readmes });
 const keywords = process.argv.slice(2);
 if (!keywords.length) keywords.push('distributed systems');
 
@@ -32,5 +34,6 @@ for (const kw of keywords) {
       console.log(`   ${String(r.score).padStart(5)}  ★${r.repo.stars}  ${r.title}${r.universityName ? ` (${r.universityName})` : ''}`);
     }
   }
+  console.log(`  READMEs: ${JSON.stringify(s.stats.readmes)}  Queries: ${s.expandedQueries.length}`);
   console.log(`  Rate limit: ${JSON.stringify(github.rateLimit())}`);
 }
