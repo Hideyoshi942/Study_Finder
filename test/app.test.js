@@ -5,6 +5,9 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../lib/app.js';
+import { loadConfig } from '../lib/config.js';
+
+const config = await loadConfig(path.resolve(import.meta.dirname, '..'));
 
 let server, base, calls, dataDir, nextEmpty;
 
@@ -23,7 +26,7 @@ before(async () => {
   calls = 0;
   const searcher = { search: async (q) => { calls++; await new Promise((r) => setTimeout(r, 20)); return fakeSearch(q); } };
   const github = { authenticated: false, rateLimit: () => ({ remaining: 7, limit: 10, resetAt: 1 }) };
-  server = http.createServer(createApp({ config: {}, searcher, github, dataDir: path.join(dataDir, 'data'), publicDir }));
+  server = http.createServer(createApp({ config, searcher, github, dataDir: path.join(dataDir, 'data'), publicDir }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -77,6 +80,15 @@ test('history, saved search, export and rate limit', async () => {
   assert.equal((await get('/api/export/compilers?format=pdf')).res.status, 400);
 
   assert.deepEqual((await get('/api/rate-limit')).body, { authenticated: false, remaining: 7, limit: 10, resetAt: 1 });
+});
+
+test('home and suggestion index', async () => {
+  const home = (await get('/api/home')).body;
+  assert.deepEqual(Object.keys(home), ['popular', 'topics', 'feed', 'recommendations']);
+  assert.equal(home.feed, null);
+  assert.ok(Array.isArray(home.recommendations.starter));
+  const idx = (await get('/api/suggest-index')).body;
+  assert.ok(idx.items.some((i) => i.kind === 'history' && i.query === 'compilers'));
 });
 
 test('static html has a CSP; unknown routes 404', async () => {

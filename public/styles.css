@@ -208,7 +208,16 @@ h2.section .count { color: var(--muted); font-weight: 400; }
 .item-line { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .item-title { font-weight: 550; overflow-wrap: anywhere; }
 .meta { color: var(--muted); font-size: 13px; white-space: nowrap; }
-.desc { color: var(--muted); font-size: 14px; margin: 2px 0 0; overflow-wrap: anywhere; }
+.desc {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 
 .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
@@ -217,7 +226,108 @@ h2.section .count { color: var(--muted); font-weight: 400; }
 @keyframes pulse { 50% { opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
+/* ---------- university accents ---------- */
+[data-uni] { --uni: #6b6b66; }
+[data-uni="mit"] { --uni: #a31f34; }
+[data-uni="stanford"] { --uni: #8c1515; }
+[data-uni="cmu"] { --uni: #c41230; }
+[data-uni="berkeley"] { --uni: #003262; }
+[data-uni="harvard"] { --uni: #a51c30; }
+[data-uni="princeton"] { --uni: #e77500; }
+[data-uni="cornell"] { --uni: #b31b1b; }
+[data-uni="uw"] { --uni: #4b2e83; }
+[data-uni="uiuc"] { --uni: #e84a27; }
+[data-uni="epfl"] { --uni: #e2001a; }
+[data-uni="eth"] { --uni: #1f407a; }
+@media (prefers-color-scheme: dark) {
+  [data-uni] { --uni: #a3a29b; }
+  [data-uni="mit"], [data-uni="stanford"], [data-uni="cmu"], [data-uni="harvard"], [data-uni="cornell"], [data-uni="epfl"] { --uni: #ff8a80; }
+  [data-uni="berkeley"], [data-uni="eth"] { --uni: #8ab4ff; }
+  [data-uni="princeton"], [data-uni="uiuc"] { --uni: #ffb366; }
+  [data-uni="uw"] { --uni: #c3a6ff; }
+}
+.uni-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--uni);
+  border: 1px solid color-mix(in srgb, var(--uni) 45%, transparent);
+  background: color-mix(in srgb, var(--uni) 8%, transparent);
+  white-space: nowrap;
+}
+
+/* ---------- home ---------- */
+.hero { text-align: center; padding: 28px 8px 8px; }
+.hero h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; }
+.hero p { color: var(--muted); margin: 0 auto 16px; max-width: 620px; }
+.chips-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.chip { border-radius: 999px; padding: 4px 14px; font-size: 14px; }
+.home-section { margin-top: 32px; }
+.home-section > .muted { margin: -4px 0 12px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.course-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  white-space: normal;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--uni);
+  background: var(--surface);
+}
+.course-tile:hover { border-color: var(--uni); }
+.tile-top { display: flex; align-items: center; gap: 8px; }
+.tile-code { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tile-title { font-weight: 550; line-height: 1.35; }
+.tile-meta { font-size: 12px; color: var(--muted); }
+.step {
+  width: 22px; height: 22px;
+  display: inline-grid; place-items: center;
+  border-radius: 50%;
+  background: var(--accent); color: var(--accent-text);
+  font-size: 12px; font-weight: 700;
+}
+
+.topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.topic-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  white-space: normal;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+}
+.topic-label { font-weight: 600; }
+.topic-vi { font-size: 13px; color: var(--muted); }
+.topic-count { font-size: 12px; color: var(--accent); margin-top: 2px; }
+
+.feed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.tabs { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--chip); }
+.tab { border: 0; background: transparent; padding: 5px 12px; border-radius: 8px; font-size: 14px; }
+.tab[aria-selected="true"] { background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .12); font-weight: 600; }
+.badge.code { color: var(--accent); background: transparent; border: 1px solid currentColor; }
+
 @media (max-width: 768px) {
+  .hero h1 { font-size: 23px; }
+  /* Course tiles become a swipeable row on phones. */
+  .tile-grid {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 78%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 6px;
+  }
+  .course-tile { scroll-snap-align: start; }
+  .topic-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .top { flex-wrap: wrap; padding: 10px 16px; gap: 8px 12px; }
   .search { order: 3; flex-basis: 100%; max-width: none; }
   .history { padding: 8px 16px 0; }

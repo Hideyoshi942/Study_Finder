@@ -7,6 +7,7 @@ import { createCache } from './lib/cache.js';
 import { createGitHub } from './lib/github.js';
 import { createSearcher } from './lib/search.js';
 import { createApp } from './lib/app.js';
+import { createFeed } from './lib/feed.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(ROOT, 'data');
@@ -19,7 +20,8 @@ if (removed) console.log(`Pruned ${removed} old cache files`);
 
 const github = createGitHub({ token, cache });
 const searcher = createSearcher({ config, github });
-const handler = createApp({ config, searcher, github, dataDir: DATA, publicDir: path.join(ROOT, 'public') });
+const feed = createFeed({ config, github, dataDir: DATA });
+const handler = createApp({ config, searcher, github, feed, dataDir: DATA, publicDir: path.join(ROOT, 'public') });
 
 const port = Number(process.env.PORT) || config.port;
 const server = http.createServer(handler);
@@ -34,4 +36,5 @@ server.on('error', (e) => {
 server.listen(port, config.host, () => {
   console.log(`Study Finder running at http://${config.host}:${port}`);
   console.log(token ? 'GitHub token: yes (30 searches/min)' : 'GitHub token: no (10 searches/min, shared with everyone behind this proxy). Set GITHUB_TOKEN for more.');
+  feed.start();
 });

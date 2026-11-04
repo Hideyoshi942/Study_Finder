@@ -24,7 +24,7 @@ function h(tag, attrs = {}, ...children) {
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else el.setAttribute(k, v === true ? '' : v);
   }
-  for (const c of children.flat()) if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
+  for (const c of children.flat(Infinity)) if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
   return el;
 }
 
@@ -216,13 +216,15 @@ function whyText(r) {
   return lines.join('\n');
 }
 
-function item(r, { showUni = false } = {}) {
+function item(r, { showUni = false, created = false } = {}) {
   return h('li', { class: 'item' },
     h('div', { class: 'item-line' },
       h('a', { class: 'item-title', href: r.url, target: '_blank', rel: 'noopener noreferrer' }, r.title),
       showUni && r.universityName ? h('span', { class: 'badge' }, r.universityName) : null,
       r.official ? h('span', { class: 'badge official' }, 'official') : null,
-      h('span', { class: 'meta', title: whyText(r) }, `★ ${fmtStars(r.repo?.stars ?? 0)}`, r.repo?.pushedAt ? ` · ${month(r.repo.pushedAt)}` : ''),
+      h('span', { class: 'meta', title: whyText(r) }, `★ ${fmtStars(r.repo?.stars ?? 0)}`,
+        created && r.repo?.createdAt ? ` · created ${ago(r.repo.createdAt)}` : r.repo?.pushedAt ? ` · ${month(r.repo.pushedAt)}` : ''),
+      created && r.courseCode && r.universityName ? h('span', { class: 'badge code' }, `${r.universityName} ${r.courseCode}`) : null,
       h('span', { class: 'chips' }, r.types.map((t) => h('span', { class: 'badge' }, TYPE_LABELS[t] ?? t)))),
     r.description ? h('p', { class: 'desc' }, r.description) : null);
 }
@@ -276,6 +278,98 @@ function render() {
   $('content').replaceChildren(...sections.flat());
 }
 
+// ---------- home ----------
+let feedTab = 'semester';
+const ago = (iso) => {
+  const days = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 86400_000));
+  return days === 0 ? 'today' : days === 1 ? 'yesterday' : days < 60 ? `${days} days ago` : `${Math.round(days / 30)} months ago`;
+};
+
+function courseTile(c, { step = null } = {}) {
+  return h('button', { type: 'button', class: 'course-tile', 'data-uni': c.university, onclick: () => runSearch(c.code) },
+    h('span', { class: 'tile-top' },
+      step ? h('span', { class: 'step' }, String(step)) : null,
+      h('span', { class: 'uni-badge', 'data-uni': c.university }, c.universityName),
+      h('span', { class: 'tile-code' }, c.code)),
+    h('span', { class: 'tile-title' }, c.title),
+    h('span', { class: 'tile-meta' }, [c.level, c.reason].filter(Boolean).join(' · ')));
+}
+
+function feedList(feed) {
+  const list = feed[feedTab] ?? [];
+  if (!list.length) {
+    return h('p', { class: 'muted' }, feed.status === 'refreshing' || !feed.updatedAt
+      ? 'Collecting new courses from GitHub… check back in a minute.'
+      : 'Nothing new here yet.');
+  }
+  return h('ul', { class: 'list flat' }, list.map((r) => item(r, { showUni: !r.courseCode, created: true })));
+}
+
+function section(title, ...children) {
+  return h('section', { class: 'home-section' }, h('h2', { class: 'section' }, title), ...children);
+}
+
+async function renderHome() {
+  current = null;
+  document.title = 'Study Finder';
+  $('q').value = '';
+  $('toolbar').hidden = true;
+  $('filters').hidden = true;
+  $('queries').textContent = '';
+  $('banner').replaceChildren();
+  let home;
+  try {
+    home = await api('/api/home');
+  } catch (e) {
+    $('banner').replaceChildren(h('div', { class: 'banner error' }, e.message));
+    return;
+  }
+  if (new URLSearchParams(location.search).get('q')) return; // a search started meanwhile
+
+  const hero = h('section', { class: 'hero' },
+    h('h1', {}, 'Find university courses on GitHub'),
+    h('p', {}, 'Search a topic in English or Vietnamese, or a course code like 6.824 or CS231n. Results are grouped by course and ranked by quality.'),
+    h('div', { class: 'chips-row' }, home.popular.map((q) => h('button', { type: 'button', class: 'chip', onclick: () => runSearch(q) }, q))));
+
+  const rec = home.recommendations;
+  const recommended = rec.courses.length
+    ? section('Recommended for you',
+      h('p', { class: 'muted' }, `Based on your searches: ${rec.basedOn.join(', ')}. Related topics: `,
+        rec.topics.map((t, i) => [i ? ', ' : '', h('button', { type: 'button', class: 'link', onclick: () => runSearch(t.query) }, t.label)])),
+      h('div', { class: 'tile-grid' }, rec.courses.map((c) => courseTile(c))))
+    : null;
+
+  const feed = home.feed;
+  let feedSection = null;
+  if (feed) {
+    const body = h('div', {}, feedList(feed));
+    const tabs = h('div', { class: 'tabs', role: 'tablist' }, [['semester', 'This semester'], ['fresh', 'New courses']].map(([id, label]) =>
+      h('button', { type: 'button', role: 'tab', class: 'tab', 'aria-selected': String(feedTab === id), onclick: (e) => {
+        feedTab = id;
+        [...tabs.children].forEach((b) => b.setAttribute('aria-selected', String(b === e.currentTarget)));
+        body.replaceChildren(feedList(feed));
+      } }, label)));
+    feedSection = section('New on GitHub',
+      h('div', { class: 'feed-head' }, tabs,
+        h('span', { class: 'muted small' }, feed.updatedAt ? `Updated ${ago(feed.updatedAt)}` : feed.status ?? '')),
+      body);
+  }
+
+  const topics = section('Browse by topic',
+    h('div', { class: 'topic-grid' }, home.topics.map((t) =>
+      h('button', { type: 'button', class: 'topic-tile', onclick: () => runSearch(t.query) },
+        h('span', { class: 'topic-label' }, t.label),
+        h('span', { class: 'topic-vi' }, t.vi),
+        t.courses ? h('span', { class: 'topic-count' }, `${t.courses} known course${t.courses > 1 ? 's' : ''}`) : null))));
+
+  const starter = section('Starter path',
+    h('p', { class: 'muted' }, 'A classic order for learning computer science from scratch.'),
+    h('div', { class: 'tile-grid path' }, rec.starter.map((c, i) => courseTile(c, { step: i + 1 }))));
+
+  const order = recommended ? [hero, recommended, feedSection, topics, starter] : [hero, topics, feedSection, starter];
+  $('content').replaceChildren(...order.filter(Boolean));
+}
+
 function didYouMeanRow(keyword) {
   const options = didYouMean(suggestItems, keyword);
   if (!options.length) return null;
@@ -304,10 +398,12 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('popstate', () => {
   const q = new URLSearchParams(location.search).get('q');
   if (q) runSearch(q, { push: false });
+  else renderHome();
 });
 
 const initial = new URLSearchParams(location.search).get('q');
 if (initial) runSearch(initial, { push: false });
+else renderHome();
 loadHistory();
 loadRate();
 loadSuggestions();

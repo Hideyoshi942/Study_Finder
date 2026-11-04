@@ -18,6 +18,19 @@
     "cirosantilli/china-dictatorship",
     "gege-circle/.github"
   ],
+  "feed": {
+    "intervalHours": 6,
+    "minBudget": 5,
+    "freshDays": 60,
+    "freshMinStars": 15,
+    "semesterDays": 120,
+    "semesterMinStars": 3,
+    "limit": 12,
+    "codeBatches": [
+      ["CS336", "CS224N", "CS231N", "CS229", "CS61A", "CS50"],
+      ["6.5840", "6.824", "6.1810", "15-445", "15-213", "11-785"]
+    ]
+  },
   "popularSearches": ["distributed systems", "machine learning", "operating systems", "database systems", "large language models", "CS50", "6.824", "học máy"],
   "starterPath": ["CS50", "CS61A", "CS61B", "15-213", "6.1810", "6.5840"],
   "topics": [

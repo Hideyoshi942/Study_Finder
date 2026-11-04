@@ -47,6 +47,7 @@ test('types', () => {
   assert.ok(t('MIT 6.824 labs in Go').includes('solutions'));
   assert.ok(t('free programming books').includes('book'));
   assert.deepEqual(t('a cli tool'), []);
+  assert.deepEqual(t('Express yourself in meetings (with memes, of course).'), []);
   assert.ok(!t('Deep learning framework for machine learning').includes('guide'));
   assert.ok(t('Learn system design').includes('guide'));
   assert.ok(t('Free machine learning resources tutorial').includes('guide'));
