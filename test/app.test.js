@@ -24,7 +24,16 @@ before(async () => {
   await mkdir(publicDir);
   await writeFile(path.join(publicDir, 'index.html'), '<!doctype html><title>t</title>');
   calls = 0;
-  const searcher = { search: async (q) => { calls++; await new Promise((r) => setTimeout(r, 20)); return fakeSearch(q); } };
+  const searcher = {
+    search: async (q, { onEvent } = {}) => {
+      calls++;
+      onEvent?.({ type: 'queries', queries: [`${q} course`] });
+      await new Promise((r) => setTimeout(r, 20));
+      onEvent?.({ type: 'progress', stage: 'search', done: 1, total: 1 });
+      onEvent?.({ type: 'partial', search: { ...fakeSearch(q), partial: true } });
+      return fakeSearch(q);
+    },
+  };
   const github = { authenticated: false, rateLimit: () => ({ remaining: 7, limit: 10, resetAt: 1 }) };
   server = http.createServer(createApp({ config, searcher, github, dataDir: path.join(dataDir, 'data'), publicDir }));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -80,6 +89,25 @@ test('history, saved search, export and rate limit', async () => {
   assert.equal((await get('/api/export/compilers?format=pdf')).res.status, 400);
 
   assert.deepEqual((await get('/api/rate-limit')).body, { authenticated: false, remaining: 7, limit: 10, resetAt: 1 });
+});
+
+const sse = (text) => text.trim().split('\n\n').filter((b) => b.startsWith('event:')).map((b) => {
+  const [, type] = b.match(/^event: (.+)$/m);
+  return { type, data: JSON.parse(b.match(/^data: (.+)$/m)[1]) };
+});
+
+test('stream: events in order, then done; a saved search answers with done only', async () => {
+  const first = await get('/api/search/stream?q=operating%20systems');
+  assert.equal(first.res.headers.get('content-type'), 'text/event-stream; charset=utf-8');
+  const events = sse(first.body);
+  assert.deepEqual(events.map((e) => e.type), ['queries', 'progress', 'partial', 'done']);
+  assert.equal(events.at(-1).data.id, 'operating-systems');
+  assert.ok('related' in events.at(-1).data);
+
+  const again = sse((await get('/api/search/stream?q=operating%20systems')).body);
+  assert.deepEqual(again.map((e) => e.type), ['done']);
+  assert.equal(again[0].data.cached, true);
+  assert.equal((await get('/api/search/stream?q=')).res.status, 400);
 });
 
 test('home and suggestion index', async () => {

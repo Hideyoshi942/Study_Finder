@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toMarkdown } from '../lib/export.js';
+import { toMarkdown, toCsv, toJson } from '../lib/export.js';
 
 const res = (id, extra = {}) => ({
   id, title: id, url: `https://github.com/${id}`, description: 'desc', types: ['course'],
@@ -37,6 +37,20 @@ test('hides solutions-only repos by default and applies minStars', () => {
   const md = toMarkdown(search, { minStars: 5000 });
   assert.ok(!md.includes('## University courses'));
   assert.ok(md.includes('[c'));
+});
+
+test('csv: header, quoting, formula defusing, BOM; json: flat items', () => {
+  const s = { ...search, resources: { ...search.resources, d: res('d', { universityName: 'CMU', types: [], description: '=HYPERLINK("x"), "quoted"' }) } };
+  const csv = toCsv(s);
+  assert.ok(csv.startsWith('﻿section,course,university,courseCode,title,url,kind,stars'));
+  const lines = csv.trim().split('\r\n');
+  assert.equal(lines.length, 1 + 3, 'header + a, c, d (b is solutions-only)');
+  assert.match(lines[1], /^University courses,MIT 6\.5840: Distributed Systems,MIT,/);
+  assert.ok(lines[3].endsWith(`"'=HYPERLINK(""x""), ""quoted"""`));
+  const json = JSON.parse(toJson(s, { hideSolutions: false }));
+  assert.equal(json.keyword, 'distributed systems');
+  assert.equal(json.items.length, 4);
+  assert.deepEqual(Object.keys(json.items[0]).slice(0, 4), ['section', 'course', 'university', 'courseCode']);
 });
 
 test('empty search says so', () => {

@@ -40,6 +40,46 @@ async function api(path) {
   return body;
 }
 
+// ---------- streaming search ----------
+let activeStream = null;
+let runToken = 0;
+
+const STAGES = {
+  search: (e) => [`Searching GitHub ${e.done}/${e.total}`, 0.6 * (e.done / e.total)],
+  wait: (e) => [`Waiting for the GitHub rate limit to reset (${Math.ceil(e.waitMs / 1000)} s). Add a GITHUB_TOKEN to avoid this.`, null],
+  readme: (e) => [`Reading READMEs ${e.done}/${e.total}`, 0.6 + 0.3 * (e.done / e.total)],
+  awesome: () => ['Reading awesome lists for course sites and videos', 0.95],
+};
+let progressValue = 0;
+function showProgress(e) {
+  const [text, value] = STAGES[e.stage]?.(e) ?? ['Working…', null];
+  if (value != null) progressValue = value;
+  const box = $('progress');
+  box.hidden = false;
+  box.querySelector('.progress-text').textContent = text;
+  box.querySelector('.progress-bar').style.width = `${Math.round(progressValue * 100)}%`;
+}
+function hideProgress() { $('progress').hidden = true; progressValue = 0; }
+
+// Resolves with the final search. Rejects with err.fallback = true when the stream could not start.
+function streamSearch(q, refresh, onPartial) {
+  return new Promise((resolve, reject) => {
+    if (!window.EventSource) return reject(Object.assign(new Error('EventSource unavailable'), { fallback: true }));
+    const es = new EventSource(`/api/search/stream?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`);
+    activeStream = es;
+    let started = false;
+    const on = (type, fn) => es.addEventListener(type, (e) => { started = true; fn(e.data ? JSON.parse(e.data) : null); });
+    on('progress', showProgress);
+    on('partial', (e) => onPartial(e.search));
+    on('done', (s) => { es.close(); resolve(s); });
+    es.addEventListener('error', (e) => {
+      es.close();
+      if (e.data) reject(new Error(JSON.parse(e.data).error));
+      else reject(Object.assign(new Error('The search stream was interrupted.'), { fallback: !started }));
+    });
+  });
+}
+
 async function runSearch(q, { refresh = false, push = true } = {}) {
   q = q.trim();
   if (!q) return;
@@ -47,13 +87,35 @@ async function runSearch(q, { refresh = false, push = true } = {}) {
   closeSuggestions();
   if (push) history.pushState({ q }, '', `?q=${encodeURIComponent(q)}`);
   document.title = `${q} · Study Finder`;
+  activeStream?.close();
+  const token = ++runToken;
   showLoading();
+  let shownPartial = false;
+  const onPartial = (s) => {
+    if (token !== runToken) return;
+    current = s;
+    if (!shownPartial) resetFilters(false);
+    shownPartial = true;
+    buildFilters();
+    render();
+  };
   try {
-    current = await api(`/api/search?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`);
-    resetFilters(false);
+    let result;
+    try {
+      result = await streamSearch(q, refresh, onPartial);
+    } catch (e) {
+      if (!e.fallback) throw e;
+      result = await api(`/api/search?q=${encodeURIComponent(q)}${refresh ? '&refresh=1' : ''}`);
+    }
+    if (token !== runToken) return;
+    current = result;
+    hideProgress();
+    if (!shownPartial) resetFilters(false);
     buildFilters();
     render();
   } catch (e) {
+    if (token !== runToken) return;
+    hideProgress();
     current = null;
     $('toolbar').hidden = true;
     $('filters').hidden = true;
@@ -376,9 +438,16 @@ function render() {
 
   $('toolbar').hidden = false;
   $('filters').hidden = false;
-  $('summary').textContent = `${shown} of ${total} resources${current.cached ? ` · saved ${new Date(current.createdAt).toLocaleString()}` : ''}`;
+  $('summary').textContent = current.partial
+    ? `${shown} resources so far…`
+    : `${shown} of ${total} resources${current.cached ? ` · saved ${new Date(current.createdAt).toLocaleString()}` : ''}`;
+  // Export and refresh need the finished, saved search.
+  $('export-menu').hidden = Boolean(current.partial);
+  $('refresh').disabled = Boolean(current.partial);
   $('queries').textContent = current.expandedQueries.length ? `Searched as: ${current.expandedQueries.join(' · ')}` : '';
-  $('export').href = `/api/export/${encodeURIComponent(current.id)}?format=md&hideSolutions=${f.hideSolutions ? 1 : 0}&minStars=${f.minStars}`;
+  for (const format of ['md', 'csv', 'json']) {
+    $(`export-${format}`).href = `/api/export/${encodeURIComponent(current.id)}?format=${format}&hideSolutions=${f.hideSolutions ? 1 : 0}&minStars=${f.minStars}`;
+  }
   $('banner').replaceChildren(...current.warnings.map((w) => h('div', { class: 'banner warn' }, w)));
 
   const sections = [];
@@ -387,8 +456,10 @@ function render() {
   if (awesome.length) sections.push(h('h2', { class: 'section' }, 'Awesome lists & roadmaps ', h('span', { class: 'count' }, `(${awesome.length})`)), h('ul', { class: 'list flat' }, awesome.map((r) => item(r, { showUni: true }))));
   if (other.length) sections.push(h('h2', { class: 'section' }, 'Other materials ', h('span', { class: 'count' }, `(${other.length})`)), h('ul', { class: 'list flat' }, other.map((r) => item(r, { showUni: true }))));
   uniPills();
-  if (sections.length) sections.push(relatedSection());
-  if (!sections.length) {
+  if (sections.length && !current.partial) sections.push(relatedSection());
+  if (!sections.length && current.partial) {
+    sections.push(...Array.from({ length: 3 }, () => h('div', { class: 'skeleton' })));
+  } else if (!sections.length) {
     sections.push(h('div', { class: 'empty' }, total
       ? [h('h1', {}, 'No results match these filters'), h('button', { type: 'button', onclick: () => resetFilters() }, 'Reset filters')]
       : [h('h1', {}, 'Nothing found'), h('p', {}, 'Try a broader topic, an English term, or a course code.'), didYouMeanRow(current.keyword)]));
@@ -428,6 +499,9 @@ function section(title, ...children) {
 }
 
 async function renderHome() {
+  activeStream?.close();
+  runToken++;
+  hideProgress();
   current = null;
   document.title = 'Study Finder';
   $('q').value = '';

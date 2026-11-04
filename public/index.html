@@ -59,10 +59,21 @@
           </select>
         </label>
         <button id="refresh" type="button">Refresh</button>
-        <a id="export" class="button" href="#" download>Export MD</a>
+        <details id="export-menu" class="menu">
+          <summary class="button">Export</summary>
+          <div class="menu-items">
+            <a id="export-md" href="#" download>Markdown (.md)</a>
+            <a id="export-csv" href="#" download>Spreadsheet (.csv)</a>
+            <a id="export-json" href="#" download>Data (.json)</a>
+          </div>
+        </details>
       </div>
       <div id="uni-pills" class="pills" role="group" aria-label="Filter by university" hidden></div>
       <p id="queries" class="queries"></p>
+      <div id="progress" class="progress" role="status" aria-live="polite" hidden>
+        <div class="progress-text"></div>
+        <div class="progress-track"><div class="progress-bar"></div></div>
+      </div>
       <div id="banner"></div>
       <div id="content"></div>
     </section>

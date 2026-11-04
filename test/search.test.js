@@ -65,6 +65,24 @@ test('pipeline: merges, filters spam and irrelevant repos, builds MIT card first
   assert.ok(s.other.includes('gh:pingcap/talent-plan'));
 });
 
+test('pipeline: emits queries, progress and partial events in order', async () => {
+  const events = [];
+  const s = await createSearcher({ config, github: fakeGitHub(), now: NOW }).search('distributed systems', { onEvent: (e) => events.push(e) });
+  assert.equal(events[0].type, 'queries');
+  assert.equal(events[0].queries.length, 6);
+  const progress = events.filter((e) => e.type === 'progress' && e.stage === 'search');
+  // 6 queries, plus the follow-up for courses with no results.
+  assert.deepEqual(progress.map((e) => e.done), [1, 2, 3, 4, 5, 6, 7]);
+  assert.equal(progress.at(-1).total, 7);
+  const partials = events.filter((e) => e.type === 'partial');
+  assert.equal(partials.length, 7);
+  assert.ok(partials[0].search.partial);
+  assert.ok(Object.keys(partials[0].search.resources).length <= Object.keys(partials.at(-1).search.resources).length);
+  assert.equal(s.partial, undefined, 'the final search is not marked partial');
+  // A throwing listener does not break the search.
+  await createSearcher({ config, github: fakeGitHub(), now: NOW }).search('distributed systems', { onEvent: () => { throw new Error('x'); } });
+});
+
 test('pipeline: a failing query adds a warning and the rest continue', async () => {
   const s = await createSearcher({ config, github: fakeGitHub({ failOn: 'lecture' }), now: NOW }).search('distributed systems');
   assert.equal(s.warnings.length, 1);
