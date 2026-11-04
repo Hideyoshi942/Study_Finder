@@ -39,4 +39,5 @@ server.listen(port, config.host, () => {
   console.log(`Study Finder running at http://${config.host}:${port}`);
   console.log(token ? 'GitHub token: yes (30 searches/min)' : 'GitHub token: no (10 searches/min, shared with everyone behind this proxy). Set GITHUB_TOKEN for more.');
   feed.start();
+  handler.startBackground();
 });

@@ -112,7 +112,7 @@ test('stream: events in order, then done; a saved search answers with done only'
 
 test('home and suggestion index', async () => {
   const home = (await get('/api/home')).body;
-  assert.deepEqual(Object.keys(home), ['popular', 'topics', 'feed', 'recommendations']);
+  assert.deepEqual(Object.keys(home), ['popular', 'topics', 'feed', 'recommendations', 'watches']);
   assert.equal(home.feed, null);
   assert.ok(Array.isArray(home.recommendations.starter));
   const idx = (await get('/api/suggest-index')).body;
