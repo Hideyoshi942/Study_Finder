@@ -65,6 +65,8 @@ test('text: loose course code matching', () => {
   assert.ok(!codeRegex('CS61B').test('cs61bx'));
   assert.ok(codeRegex('6.824').test('mit6.824 labs'));
   assert.ok(!codeRegex('6.824').test('16.8241'));
+  assert.ok(codeRegex('6.824').test('mit6824 raft'));
+  assert.ok(!codeRegex('6.824').test('port 6824'));
   assert.ok(codeRegex('15-445').test('cmu15445 bustub'));
   assert.ok(codeRegex('6.S081').test('6.s081 xv6'));
 });

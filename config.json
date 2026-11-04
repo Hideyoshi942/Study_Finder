@@ -7,7 +7,7 @@
     "minStars": 20,
     "codeMinStars": 5,
     "maxQueries": 6,
-    "maxCodesPerQuery": 4,
+    "maxCodesPerQuery": 5,
     "minRelevance": 0.34,
     "resultLimit": 150
   },
