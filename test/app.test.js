@@ -9,6 +9,7 @@ import { loadConfig } from '../lib/config.js';
 
 const config = await loadConfig(path.resolve(import.meta.dirname, '..'));
 
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00]);
 let server, base, calls, dataDir, nextEmpty;
 
 const fakeSearch = (q) => ({
@@ -23,6 +24,8 @@ before(async () => {
   const publicDir = path.join(dataDir, 'public');
   await mkdir(publicDir);
   await writeFile(path.join(publicDir, 'index.html'), '<!doctype html><title>t</title>');
+  await writeFile(path.join(publicDir, 'icon-192.png'), PNG);
+  await writeFile(path.join(publicDir, 'manifest.webmanifest'), '{"name":"t"}');
   calls = 0;
   const searcher = {
     search: async (q, { onEvent } = {}) => {
@@ -123,4 +126,13 @@ test('static html has a CSP; unknown routes 404', async () => {
   const { res } = await get('/');
   assert.match(res.headers.get('content-security-policy'), /default-src 'self'/);
   assert.equal((await get('/nope')).res.status, 404);
+});
+
+test('PWA files: manifest type, binary icon served byte for byte', async () => {
+  const m = await fetch(base + '/manifest.webmanifest');
+  assert.equal(m.headers.get('content-type'), 'application/manifest+json');
+  assert.equal((await m.json()).name, 't');
+  const icon = await fetch(base + '/icon-192.png');
+  assert.equal(icon.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await icon.arrayBuffer()), PNG);
 });

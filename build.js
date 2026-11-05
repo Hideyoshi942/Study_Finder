@@ -23,7 +23,7 @@ const CACHE = path.join(ROOT, 'data', 'cache');
 
 // lib/ files the browser needs (static-backend.js imports them). None may import node:* modules.
 const BROWSER_LIB = ['text', 'query', 'classify', 'score', 'resource', 'group', 'enrich', 'readme', 'awesome', 'github', 'search', 'suggest', 'export'];
-const PUBLIC = ['index.html', 'app.js', 'suggest.js', 'styles.css', 'static-backend.js'];
+const PUBLIC = ['index.html', 'app.js', 'suggest.js', 'styles.css', 'static-backend.js', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 const TOKEN_PATTERN = /\b(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/;
 
 const config = await loadConfig(ROOT);

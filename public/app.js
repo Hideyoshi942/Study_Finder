@@ -886,3 +886,6 @@ route();
 loadHistory();
 loadRate();
 loadSuggestions();
+
+// Installable app that opens offline with the last loaded pages.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
