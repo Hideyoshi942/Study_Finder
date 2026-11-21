@@ -1,8 +1,8 @@
 // Service worker: lets the app install and open offline.
 // Network first for every same-origin GET, so a deploy shows up on the next load; the cache is
 // only the fallback when offline. API calls (live search stream, write requests) are never cached.
-const CACHE = 'study-finder-v1';
-const SHELL = ['./', 'index.html', 'app.js', 'suggest.js', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'];
+const CACHE = 'study-finder-v2';
+const SHELL = ['./', 'index.html', 'app.js', 'suggest.js', 'static-backend.js', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

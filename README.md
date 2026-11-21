@@ -132,4 +132,4 @@ npm run smoke -- "distributed systems"    # live search, prints top results
 - The server listens on 127.0.0.1 only and is single-user. There are no accounts.
 - Official university repos are kept even when they are software rather than study material (for example `CMU-Perceptual-Computing-Lab/openpose`).
 - The same course listed in two curated lists with different URLs can appear twice (for example UW CSEP 552).
-- Not built (optional Phase 4 in the spec): AI summaries, which need an API key, and a static GitHub Pages mode.
+- Not built: AI summaries (intentionally omitted so the static GitHub Pages build stays completely key-free).
